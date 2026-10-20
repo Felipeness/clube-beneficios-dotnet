@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Clube.Core.Ports.Driving;
 
 namespace Clube.EndToEnd.Tests;
@@ -60,6 +61,20 @@ public class MembershipApiTests
         var response = await client.PostAsJsonAsync(path.Replace("{membership}", $"/memberships/{membership.Id}"), body);
 
         Assert.Equal(expected, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DocumentsRejectionsInOpenApi()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+
+        using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
+        JsonElement responses = document.RootElement
+            .GetProperty("paths").GetProperty("/memberships").GetProperty("post").GetProperty("responses");
+
+        Assert.True(responses.TryGetProperty("400", out _), "POST /memberships must document invalid CPF");
+        Assert.True(responses.TryGetProperty("409", out _), "POST /memberships must document duplicate holder");
     }
 
     private static async Task<MembershipView> SubscribeAsync(HttpClient client) =>
