@@ -14,8 +14,9 @@ internal static class BearerSettings
     public static bool AreComplete(JwtBearerOptions options)
     {
         var parameters = options.TokenValidationParameters;
-        bool hasIssuer = parameters.ValidIssuers?.Any(issuer => !string.IsNullOrWhiteSpace(issuer)) == true;
-        bool hasAudience = parameters.ValidAudiences?.Any(audience => !string.IsNullOrWhiteSpace(audience)) == true;
+        // The configuration key ValidIssuer fills the singular property; the plural list stays empty unless ValidIssuers is set too.
+        bool hasIssuer = !string.IsNullOrWhiteSpace(parameters.ValidIssuer) || parameters.ValidIssuers?.Any(issuer => !string.IsNullOrWhiteSpace(issuer)) == true;
+        bool hasAudience = !string.IsNullOrWhiteSpace(parameters.ValidAudience) || parameters.ValidAudiences?.Any(audience => !string.IsNullOrWhiteSpace(audience)) == true;
         bool hasKeys = !string.IsNullOrWhiteSpace(options.Authority) || parameters.IssuerSigningKeys?.Any() == true;
         return hasIssuer && hasAudience && hasKeys;
     }
