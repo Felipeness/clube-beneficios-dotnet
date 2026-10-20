@@ -1,0 +1,19 @@
+using Clube.Core.Domain.Memberships;
+using Clube.Core.Domain.Shared;
+
+namespace Clube.Core.Ports.Driving;
+
+/// <summary>
+/// Driving (primary) port: everything the outside world may ask of the hexagon about memberships.
+/// HTTP, a CLI or a test harness are all driving adapters that call this and nothing else.
+/// </summary>
+public interface IForManagingMemberships
+{
+    Task<Result<MembershipView>> SubscribeAsync(string cpf, CancellationToken ct);
+
+    Task<Result<MembershipView>> GetAsync(MembershipId id, CancellationToken ct);
+
+    Task<Result<MembershipView>> CreditMonthlyAllowanceAsync(MembershipId id, string period, CancellationToken ct);
+
+    Task<Result<MembershipView>> RedeemRewardAsync(MembershipId id, string rewardId, CancellationToken ct);
+}
