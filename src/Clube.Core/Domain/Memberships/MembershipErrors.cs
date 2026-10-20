@@ -10,6 +10,12 @@ public static class MembershipErrors
     public static readonly Error InvalidPeriod =
         new("membership.invalid_period", "Billing period must be formatted as yyyy-MM.", ErrorKind.Validation);
 
+    public static readonly Error InvalidLimit =
+        new("membership.invalid_limit", "Statement limit must be between 1 and 100.", ErrorKind.Validation);
+
+    public static readonly Error InvalidCursor =
+        new("membership.invalid_cursor", "Statement cursor is invalid.", ErrorKind.Validation);
+
     public static readonly Error NotFound =
         new("membership.not_found", "Membership not found.", ErrorKind.NotFound);
 

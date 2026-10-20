@@ -23,18 +23,22 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
             .Where(entry => entry.Account == account.Value)
             .SumAsync(entry => entry.SignedCents, ct));
 
-    public async Task<IReadOnlyList<StatementLine>> StatementOfAsync(LedgerAccount account, int limit, CancellationToken ct)
+    public async Task<StatementSlice> StatementOfAsync(LedgerAccount account, StatementPage page, CancellationToken ct)
     {
+        long before = page.After?.Position ?? long.MaxValue;
         // Ordered by entry id (insertion order): SQLite cannot ORDER BY a DateTimeOffset column through EF Core.
+        // One row beyond the limit tells whether another page exists.
         var rows = await db.LedgerEntries
-            .Where(entry => entry.Account == account.Value)
+            .Where(entry => entry.Account == account.Value && entry.Id < before)
             .Join(db.LedgerTransactions, entry => entry.TransactionId, transaction => transaction.Id,
                 (entry, transaction) => new { entry.Id, TransactionId = transaction.Id, transaction.Description, entry.SignedCents, transaction.PostedAt, transaction.ActorKind, transaction.ActorId })
             .OrderByDescending(row => row.Id)
-            .Take(limit)
+            .Take(page.Limit + 1)
             .ToListAsync(ct);
 
-        return [.. rows.Select(row => new StatementLine(row.TransactionId, row.Description, row.SignedCents, row.PostedAt, Enum.Parse<ActorKind>(row.ActorKind), row.ActorId))];
+        return StatementSlice.From([.. rows.Select(row => new PositionedLine(
+            row.Id,
+            new StatementLine(row.TransactionId, row.Description, row.SignedCents, row.PostedAt, Enum.Parse<ActorKind>(row.ActorKind), row.ActorId)))], page);
     }
 
     public Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct) =>

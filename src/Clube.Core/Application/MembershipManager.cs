@@ -10,8 +10,6 @@ namespace Clube.Core.Application;
 // TimeProvider is a driven port too; the BCL already ships it as an abstraction with a fake for tests.
 public sealed class MembershipManager(IForStoringMemberships memberships, IForIdentifyingTheCaller caller, TimeProvider clock) : IForManagingMemberships
 {
-    private const int StatementPageSize = 50;
-
     public async Task<Result<MembershipView>> SubscribeAsync(string cpf, CancellationToken ct)
     {
         if (!Cpf.Parse(cpf).TryGetValue(out var holder, out var invalidCpf)) return invalidCpf;
@@ -32,14 +30,14 @@ public sealed class MembershipManager(IForStoringMemberships memberships, IForId
         return await ViewOfAsync(membership, ct);
     }
 
-    public async Task<Result<StatementView>> GetStatementAsync(MembershipId id, CancellationToken ct)
+    public async Task<Result<StatementView>> GetStatementAsync(MembershipId id, StatementPage page, CancellationToken ct)
     {
         var membership = await memberships.FindAsync(id, ct);
         if (membership is null) return MembershipErrors.NotFound;
 
         var balance = await memberships.BalanceOfAsync(membership.Account, ct);
-        var lines = await memberships.StatementOfAsync(membership.Account, StatementPageSize, ct);
-        return new StatementView(id.Value, balance.Cents, lines);
+        var slice = await memberships.StatementOfAsync(membership.Account, page, ct);
+        return new StatementView(id.Value, balance.Cents, slice.Lines, slice.Next);
     }
 
     public async Task<Result<MembershipView>> CreditMonthlyAllowanceAsync(MembershipId id, string period, CancellationToken ct)

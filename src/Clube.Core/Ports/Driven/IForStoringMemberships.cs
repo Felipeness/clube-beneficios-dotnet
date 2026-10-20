@@ -14,7 +14,8 @@ public interface IForStoringMemberships
 
     Task<Money> BalanceOfAsync(LedgerAccount account, CancellationToken ct);
 
-    Task<IReadOnlyList<StatementLine>> StatementOfAsync(LedgerAccount account, int limit, CancellationToken ct);
+    /// <summary>Newest first, by insertion order. Keyset paging: a new posting never shifts or repeats rows already seen.</summary>
+    Task<StatementSlice> StatementOfAsync(LedgerAccount account, StatementPage page, CancellationToken ct);
 
     /// <summary>The fingerprint stored with the transaction posted under this key, or null when the key is unused.</summary>
     Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct);

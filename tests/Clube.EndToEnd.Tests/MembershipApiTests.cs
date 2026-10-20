@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Clube.Adapters.Http;
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Ports.Driving;
 using Microsoft.Data.Sqlite;
@@ -27,7 +28,7 @@ public class MembershipApiTests
         var retriedCredit = await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
         await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
         var retriedRedemption = await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
-        var statement = await client.GetFromJsonAsync<StatementView>($"{membership}/statement", Json);
+        var statement = await client.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
 
         Assert.Equal("***.982.247-**", created.Holder);
         Assert.Equal(2000, retriedCredit.BalanceCents);
@@ -47,7 +48,7 @@ public class MembershipApiTests
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/memberships/{created.Id}/allowance-credits") { Content = JsonContent.Create(new { period = "2026-10" }) };
         request.Headers.Add("traceparent", $"00-{traceId}-00f067aa0ba902b7-01");
         Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(request)).StatusCode);
-        var statement = await client.GetFromJsonAsync<StatementView>($"/memberships/{created.Id}/statement", Json);
+        var statement = await client.GetFromJsonAsync<StatementResponse>($"/memberships/{created.Id}/statement", Json);
 
         Assert.Equal(traceId, factory.QueryScalar("SELECT CorrelationId FROM ledger_transactions"));
         Assert.Equal("Anonymous", factory.QueryScalar("SELECT ActorKind FROM ledger_transactions"));
@@ -154,6 +155,74 @@ public class MembershipApiTests
         JsonElement credit = document.RootElement
             .GetProperty("paths").GetProperty("/memberships/{id}/allowance-credits").GetProperty("post").GetProperty("responses");
         Assert.True(credit.TryGetProperty("422", out _), "allowance credit must document periods outside the membership window");
+    }
+
+    [Fact]
+    public async Task PagesTheStatementWithOpaqueCursorsUntilTheEnd()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var created = await SubscribeAsync(client);
+        await CreditMonthsAsync(factory, client, created.Id, 3);
+        string statementPath = $"/memberships/{created.Id}/statement";
+
+        var walked = new List<Guid>();
+        string? cursor = null;
+        do
+        {
+            var page = await client.GetFromJsonAsync<StatementResponse>($"{statementPath}?limit=1" + (cursor is null ? "" : $"&cursor={cursor}"), Json);
+            Assert.NotNull(page);
+            walked.Add(Assert.Single(page.Lines).TransactionId);
+            Assert.Equal(6000, page.BalanceCents);
+            cursor = page.NextCursor;
+        }
+        while (cursor is not null);
+
+        Assert.Equal(3, walked.Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData("?limit=101")]
+    [InlineData("?limit=0")]
+    [InlineData("?cursor=not-a-cursor!")]
+    [InlineData("?cursor=YWJj")]
+    public async Task RejectsInvalidStatementPaging(string query)
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var created = await SubscribeAsync(client);
+
+        var response = await client.GetAsync($"/memberships/{created.Id}/statement{query}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task DocumentsStatementPagingInOpenApi()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+
+        using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
+        JsonElement statement = document.RootElement
+            .GetProperty("paths").GetProperty("/memberships/{id}/statement").GetProperty("get");
+
+        var parameters = statement.GetProperty("parameters").EnumerateArray().Select(parameter => parameter.GetProperty("name").GetString());
+        Assert.Contains("limit", parameters);
+        Assert.Contains("cursor", parameters);
+        Assert.True(statement.GetProperty("responses").TryGetProperty("400", out _), "statement must document invalid paging");
+    }
+
+    // The credit window only accepts periods up to the current month, so the clock walks forward with them.
+    private static async Task CreditMonthsAsync(ClubeApiFactory factory, HttpClient client, Guid membershipId, int months)
+    {
+        DateTimeOffset start = factory.Clock.GetUtcNow();
+        for (int month = 0; month < months; month++)
+        {
+            var moment = start.AddMonths(month);
+            factory.Clock.SetUtcNow(moment);
+            await PostAsync<MembershipView>(client, $"/memberships/{membershipId}/allowance-credits", new { period = $"{moment:yyyy-MM}" });
+        }
     }
 
     private static Task<MembershipView> SubscribeAsync(HttpClient client) =>

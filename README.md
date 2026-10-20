@@ -90,7 +90,7 @@ O domínio fica numa pasta dentro do `Core`, não num projeto separado: no hexag
 - **Janela do crédito:** só dá pra creditar competências entre o mês da assinatura e o mês atual, inclusive; fora disso a resposta é 422 (`membership.future_period` ou `membership.period_before_subscription`). Os meses são calculados em `America/Sao_Paulo`, num lugar só (`BillingPeriod.At`), e não em UTC: às 21h30 de 31/10 em São Paulo ainda é outubro. O relógio vem do `TimeProvider`, que os testes substituem por um `FakeTimeProvider`. O retry de uma competência já creditada continua respondendo 200 sem reavaliar a janela.
 - **Concorrência:** cada lançamento incrementa `Membership.LedgerVersion`, que é concurrency token. Dois resgates que leram o mesmo saldo não conseguem gastá-lo duas vezes, e o segundo recebe 409.
 - **Auditoria (quem e qual requisição):** toda transação guarda um `Actor` (`Kind` + `Id` opcional) e um `CorrelationId`, em colunas de `ledger_transactions` (e no store em memória). `Actor` é um tipo fechado com construtor privado e fábricas (`Anonymous`, `Member(id)`), então "anônimo com id" não existe; um novo tipo de chamador (webhook do PSP, job) é um valor no enum `ActorKind` mais uma fábrica. O núcleo não recebe isso por parâmetro: pergunta à porta de saída `IForIdentifyingTheCaller.Current`, que o adaptador HTTP implementa a partir do request (hoje sempre anônimo; correlação = trace id da `Activity`, que respeita o header `traceparent`, ou `TraceIdentifier`). Nos testes do núcleo entra um fake. O extrato mostra `actorKind` e `actorId` (id estável, nunca CPF). O adaptador SQLite loga a postagem (`ILogger` com message template: transactionId, chave de idempotência, kind do ator, correlationId) só depois do commit. Bancos SQLite antigos precisam ser recriados para ganhar as colunas.
-- **Extrato:** `GET /memberships/{id}/statement` lista os lançamentos que explicam o saldo, com limite de 50.
+- **Extrato paginado:** `GET /memberships/{id}/statement?limit=&cursor=` devolve os lançamentos do mais novo para o mais antigo, e `nextCursor` (null na última página). Paginação por keyset sobre o id da entrada do ledger, não por offset: lançamento novo entre duas páginas não repete nem pula linha (ele só aparece ao recomeçar sem cursor). O adaptador busca `limit + 1` linhas para saber se há próxima página, sem COUNT. `limit` vai de 1 a 100 (padrão 50); fora disso é 400, não clamp, para o cliente não achar que recebeu o que pediu. O cursor é opaco para o cliente (base64url da posição): o Core só conhece `StatementCursor` e `StatementPage`, a codificação fica no adaptador HTTP; cursor inválido é 400. `balanceCents` continua sendo o saldo total, não o da página.
 
 ### Outras
 
@@ -109,6 +109,6 @@ dotnet run --project src/Clube.Host
 |---|---|---|
 | POST | `/memberships` | `{ "cpf": "529.982.247-25" }` |
 | GET | `/memberships/{id}` | |
-| GET | `/memberships/{id}/statement` | |
+| GET | `/memberships/{id}/statement` | query `limit` (1 a 100) e `cursor` |
 | POST | `/memberships/{id}/allowance-credits` | `{ "period": "2026-10" }` |
 | POST | `/memberships/{id}/redemptions` | `{ "rewardId": "cinema-ticket" }` + header `Idempotency-Key: <chave do cliente>` |

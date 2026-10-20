@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Memberships;
+using Clube.Core.Domain.Shared;
 using Clube.Core.Ports.Driving;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -21,6 +23,13 @@ public sealed record RedeemRequest(
     [property: Description("One of: cinema-ticket (R$ 10,00), perfume-kit (R$ 20,00), thermal-bottle (R$ 29,90 with 15% off: R$ 25,41).")]
     string RewardId);
 
+public sealed record StatementResponse(
+    Guid MembershipId,
+    long BalanceCents,
+    IReadOnlyList<StatementLine> Lines,
+    [property: Description("Pass as ?cursor= to get the next (older) page; null on the last page. Opaque: do not parse it.")]
+    string? NextCursor);
+
 // Driving adapter: translates HTTP into calls on the driving port and Results back into HTTP.
 // It knows nothing about storage; it only sees IForManagingMemberships.
 internal static class MembershipEndpoints
@@ -37,6 +46,7 @@ internal static class MembershipEndpoints
         memberships.MapGet("/{id:guid}", Get)
             .ProducesProblem(StatusCodes.Status404NotFound);
         memberships.MapGet("/{id:guid}/statement", GetStatement)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
         memberships.MapPost("/{id:guid}/allowance-credits", CreditAllowance)
             .ProducesProblem(StatusCodes.Status400BadRequest)
@@ -66,12 +76,32 @@ internal static class MembershipEndpoints
         return result.TryGetValue(out var view, out var error) ? TypedResults.Ok(view) : error.ToProblem();
     }
 
-    private static async Task<Results<Ok<StatementView>, ProblemHttpResult>> GetStatement(
-        Guid id, IForManagingMemberships memberships, CancellationToken ct)
+    private static async Task<Results<Ok<StatementResponse>, ProblemHttpResult>> GetStatement(
+        Guid id,
+        [Description("Page size, 1 to 100 (default 50). Out of range is a 400, never silently clamped.")] int? limit,
+        [Description("The nextCursor of the previous page. Omit for the newest entries.")] string? cursor,
+        IForManagingMemberships memberships,
+        CancellationToken ct)
     {
-        var result = await memberships.GetStatementAsync(new MembershipId(id), ct);
-        return result.TryGetValue(out var statement, out var error) ? TypedResults.Ok(statement) : error.ToProblem();
+        if (!ParsePage(limit, cursor).TryGetValue(out var page, out var invalidPage)) return invalidPage.ToProblem();
+
+        var result = await memberships.GetStatementAsync(new MembershipId(id), page, ct);
+        return result.TryGetValue(out var statement, out var error) ? TypedResults.Ok(ToResponse(statement)) : error.ToProblem();
     }
+
+    private static Result<StatementPage> ParsePage(int? limit, string? cursor)
+    {
+        if (cursor is null) return StatementPage.Create(limit, null);
+        if (!StatementCursorCodec.Decode(cursor).TryGetValue(out var after, out var invalidCursor)) return invalidCursor;
+
+        return StatementPage.Create(limit, after);
+    }
+
+    private static StatementResponse ToResponse(StatementView statement) => new(
+        statement.MembershipId,
+        statement.BalanceCents,
+        statement.Lines,
+        statement.Next is null ? null : StatementCursorCodec.Encode(statement.Next));
 
     private static async Task<Results<Ok<MembershipView>, ProblemHttpResult>> CreditAllowance(
         Guid id, CreditAllowanceRequest request, IForManagingMemberships memberships, CancellationToken ct)

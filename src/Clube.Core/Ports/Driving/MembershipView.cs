@@ -12,4 +12,4 @@ public sealed record MembershipView(Guid Id, string Holder, long BalanceCents, D
         membership.SubscribedAt);
 }
 
-public sealed record StatementView(Guid MembershipId, long BalanceCents, IReadOnlyList<StatementLine> Lines);
+public sealed record StatementView(Guid MembershipId, long BalanceCents, IReadOnlyList<StatementLine> Lines, StatementCursor? Next);

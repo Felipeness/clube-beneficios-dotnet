@@ -18,10 +18,14 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
         Task.FromResult(savedMembers.GetValueOrDefault(id));
 
     public Task<Money> BalanceOfAsync(LedgerAccount account, CancellationToken ct) =>
-        Task.FromResult(Money.FromCents(EntriesOf(account).Sum(line => line.AmountCents)));
+        Task.FromResult(Money.FromCents(EntriesOf(account).Sum(entry => entry.Line.AmountCents)));
 
-    public Task<IReadOnlyList<StatementLine>> StatementOfAsync(LedgerAccount account, int limit, CancellationToken ct) =>
-        Task.FromResult<IReadOnlyList<StatementLine>>([.. EntriesOf(account).Reverse().Take(limit)]);
+    public Task<StatementSlice> StatementOfAsync(LedgerAccount account, StatementPage page, CancellationToken ct)
+    {
+        long before = page.After?.Position ?? long.MaxValue;
+        var newestFirst = EntriesOf(account).Where(entry => entry.Position < before).Reverse().Take(page.Limit + 1).ToList();
+        return Task.FromResult(StatementSlice.From(newestFirst, page));
+    }
 
     public Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct) =>
         Task.FromResult(postedTransactions.FirstOrDefault(transaction => transaction.Header.Key == key)?.Header.Fingerprint);
@@ -40,10 +44,13 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
         return Task.FromResult(!rejected);
     }
 
-    private IEnumerable<StatementLine> EntriesOf(LedgerAccount account) =>
-        postedTransactions.SelectMany(transaction => transaction.Entries
-            .Where(entry => entry.Account == account)
-            .Select(entry => new StatementLine(transaction.Id, transaction.Header.Description, entry.SignedCents, transaction.Header.PostedAt, transaction.Header.Caller.Actor.Kind, transaction.Header.Caller.Actor.Id)));
+    // Position counts every entry in the store, like the SQLite entry id, so it is stable as new postings arrive.
+    private IEnumerable<PositionedLine> EntriesOf(LedgerAccount account) =>
+        postedTransactions
+            .SelectMany(transaction => transaction.Entries.Select(entry => (transaction, entry)))
+            .Select((posted, index) => (posted.transaction, posted.entry, Position: index + 1L))
+            .Where(posted => posted.entry.Account == account)
+            .Select(posted => new PositionedLine(posted.Position, new StatementLine(posted.transaction.Id, posted.transaction.Header.Description, posted.entry.SignedCents, posted.transaction.Header.PostedAt, posted.transaction.Header.Caller.Actor.Kind, posted.transaction.Header.Caller.Actor.Id)));
 
     private bool HolderTaken() =>
         pendingMembers.Any(candidate => savedMembers.Values.Any(existing => existing.Holder == candidate.Holder));

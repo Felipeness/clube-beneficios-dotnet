@@ -1,3 +1,4 @@
+using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Memberships;
 using Clube.Core.Domain.Shared;
 
@@ -13,7 +14,7 @@ public interface IForManagingMemberships
 
     Task<Result<MembershipView>> GetAsync(MembershipId id, CancellationToken ct);
 
-    Task<Result<StatementView>> GetStatementAsync(MembershipId id, CancellationToken ct);
+    Task<Result<StatementView>> GetStatementAsync(MembershipId id, StatementPage page, CancellationToken ct);
 
     Task<Result<MembershipView>> CreditMonthlyAllowanceAsync(MembershipId id, string period, CancellationToken ct);
 

@@ -74,7 +74,7 @@ public class MembershipManagerTests
         await memberships.CreditMonthlyAllowanceAsync(id, "2026-11", default);
         await memberships.RedeemRewardAsync(id, "thermal-bottle", "order-1", default);
 
-        var statement = ResultAssert.Ok(await memberships.GetStatementAsync(id, default));
+        var statement = ResultAssert.Ok(await memberships.GetStatementAsync(id, StatementPage.Default, default));
 
         Assert.Equal(4000 - 2541, statement.BalanceCents);
         Assert.Equal([-2541L, 2000L, 2000L], statement.Lines.Select(line => line.AmountCents));
@@ -106,7 +106,7 @@ public class MembershipManagerTests
         var id = await SubscribeAsync(memberships);
 
         await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
-        var line = Assert.Single(ResultAssert.Ok(await memberships.GetStatementAsync(id, default)).Lines);
+        var line = Assert.Single(ResultAssert.Ok(await memberships.GetStatementAsync(id, StatementPage.Default, default)).Lines);
 
         Assert.Equal(new CallerContext(actor, "corr-77"), Assert.Single(store.PostedTransactions).Header.Caller);
         Assert.Equal(ActorKind.Member, line.ActorKind);
@@ -120,7 +120,7 @@ public class MembershipManagerTests
         var id = await SubscribeAsync(memberships);
 
         await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
-        var line = Assert.Single(ResultAssert.Ok(await memberships.GetStatementAsync(id, default)).Lines);
+        var line = Assert.Single(ResultAssert.Ok(await memberships.GetStatementAsync(id, StatementPage.Default, default)).Lines);
 
         Assert.Equal(ActorKind.Anonymous, line.ActorKind);
         Assert.Null(line.ActorId);
