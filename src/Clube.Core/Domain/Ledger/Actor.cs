@@ -1,11 +1,8 @@
-using System.Text.Json.Serialization;
 using Clube.Core.Domain.Memberships;
 
 namespace Clube.Core.Domain.Ledger;
 
 // New callers (webhook, internal jobs) are one more member here plus one factory below.
-// Serialized by name so the statement stays readable and stable if the enum is reordered.
-[JsonConverter(typeof(JsonStringEnumConverter<ActorKind>))]
 public enum ActorKind
 {
     Anonymous,

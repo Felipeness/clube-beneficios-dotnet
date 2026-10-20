@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Ports.Driving;
 using Microsoft.Data.Sqlite;
@@ -10,6 +11,9 @@ namespace Clube.EndToEnd.Tests;
 public class MembershipApiTests
 {
     private const string ValidCpf = "529.982.247-25";
+
+    // Mirrors the API contract: enums travel by name.
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { Converters = { new JsonStringEnumConverter() } };
 
     [Fact]
     public async Task CreditsAndRedeemsThroughTheLedgerIdempotently()
@@ -23,7 +27,7 @@ public class MembershipApiTests
         var retriedCredit = await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
         await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
         var retriedRedemption = await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
-        var statement = await client.GetFromJsonAsync<StatementView>($"{membership}/statement");
+        var statement = await client.GetFromJsonAsync<StatementView>($"{membership}/statement", Json);
 
         Assert.Equal("***.982.247-**", created.Holder);
         Assert.Equal(2000, retriedCredit.BalanceCents);
@@ -43,7 +47,7 @@ public class MembershipApiTests
         using var request = new HttpRequestMessage(HttpMethod.Post, $"/memberships/{created.Id}/allowance-credits") { Content = JsonContent.Create(new { period = "2026-10" }) };
         request.Headers.Add("traceparent", $"00-{traceId}-00f067aa0ba902b7-01");
         Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(request)).StatusCode);
-        var statement = await client.GetFromJsonAsync<StatementView>($"/memberships/{created.Id}/statement");
+        var statement = await client.GetFromJsonAsync<StatementView>($"/memberships/{created.Id}/statement", Json);
 
         Assert.Equal(traceId, factory.QueryScalar("SELECT CorrelationId FROM ledger_transactions"));
         Assert.Equal("Anonymous", factory.QueryScalar("SELECT ActorKind FROM ledger_transactions"));
@@ -160,7 +164,7 @@ public class MembershipApiTests
     {
         var response = await SendAsync(client, path, body, idempotencyKey);
         Assert.Equal(expected, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<T>();
+        var payload = await response.Content.ReadFromJsonAsync<T>(Json);
         Assert.NotNull(payload);
         return payload;
     }

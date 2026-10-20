@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using Clube.Core.Ports.Driven;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics;
@@ -21,6 +22,8 @@ public static class HttpAdapter
             // Turns a missing or null "cpf" into a 400 at the boundary instead of a NullReferenceException.
             options.SerializerOptions.RespectNullableAnnotations = true;
             options.SerializerOptions.RespectRequiredConstructorParameters = true;
+            // Enums go out by name, so the contract stays readable and survives reordering the enum.
+            options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
         });
     }
 
