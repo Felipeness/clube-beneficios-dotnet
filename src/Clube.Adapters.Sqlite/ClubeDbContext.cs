@@ -8,11 +8,13 @@ internal sealed class ClubeDbContext(DbContextOptions<ClubeDbContext> options) :
     public DbSet<Membership> Memberships => Set<Membership>();
     public DbSet<LedgerTransactionRow> LedgerTransactions => Set<LedgerTransactionRow>();
     public DbSet<LedgerEntryRow> LedgerEntries => Set<LedgerEntryRow>();
+    public DbSet<OutboxMessageRow> OutboxMessages => Set<OutboxMessageRow>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new MembershipConfiguration());
         modelBuilder.ApplyConfiguration(new LedgerTransactionConfiguration());
         modelBuilder.ApplyConfiguration(new LedgerEntryConfiguration());
+        modelBuilder.ApplyConfiguration(new OutboxMessageConfiguration());
     }
 }

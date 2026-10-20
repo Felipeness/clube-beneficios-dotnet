@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Clube.Adapters.Http;
 using Clube.Core.Domain.Ledger;
+using Clube.Core.Domain.Vouchers;
 using Clube.Core.Ports.Driving;
 using Microsoft.Data.Sqlite;
 
@@ -269,6 +270,46 @@ public class MembershipApiTests
             factory.Clock.SetUtcNow(moment);
             await PixWebhook.CreditAsync(factory, client, membershipId, $"{moment:yyyy-MM}");
         }
+    }
+
+    [Fact]
+    public async Task DeliversTheVoucherOfARedemptionThroughTheOutbox()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var created = await SubscribeAsync(client);
+        using var member = factory.CreateClientAsMember(created.Id);
+        await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
+
+        await PostAsync<MembershipView>(member, $"/memberships/{created.Id}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+        string? pendingBeforeRelay = factory.QueryScalar("SELECT Status FROM outbox_messages");
+        var settled = await factory.DispatchOutboxAsync();
+        var secondBatch = await factory.DispatchOutboxAsync();
+
+        var delivered = Assert.Single(settled);
+        string? redemptionId = factory.QueryScalar("SELECT Id FROM ledger_transactions WHERE Description = 'Redemption cinema-ticket'");
+        Assert.Equal("Pending", pendingBeforeRelay);
+        Assert.Equal(OutboxStatus.Delivered, delivered.Status);
+        Assert.Equal(redemptionId, delivered.Event.TransactionId.ToString(), ignoreCase: true);
+        Assert.Equal("Delivered", factory.QueryScalar("SELECT Status FROM outbox_messages"));
+        Assert.Empty(secondBatch);
+    }
+
+    [Fact]
+    public async Task CommitsTheRedemptionAndItsOutboxMessageOrNeither()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var created = await SubscribeAsync(client);
+        using var member = factory.CreateClientAsMember(created.Id);
+        await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
+        factory.ExecuteSql("CREATE TRIGGER outbox_down BEFORE INSERT ON outbox_messages BEGIN SELECT RAISE(ABORT, 'outbox down'); END;");
+
+        var response = await SendAsync(member, $"/memberships/{created.Id}/redemptions", new { rewardId = "cinema-ticket" }, "order-1");
+
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal("0", factory.QueryScalar("SELECT COUNT(*) FROM ledger_transactions WHERE Description LIKE 'Redemption%'"));
+        Assert.Equal("0", factory.QueryScalar("SELECT COUNT(*) FROM outbox_messages"));
     }
 
     private static Task<MembershipView> SubscribeAsync(HttpClient client) =>

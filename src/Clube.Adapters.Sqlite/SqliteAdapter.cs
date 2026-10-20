@@ -18,7 +18,8 @@ public static class SqliteAdapter
     public static IServiceCollection AddSqliteAdapter(this IServiceCollection services, string connectionString) =>
         services
             .AddDbContext<ClubeDbContext>(options => options.UseSqlite(connectionString))
-            .AddScoped<IForStoringMemberships, SqliteMembershipStore>();
+            .AddScoped<IForStoringMemberships, SqliteMembershipStore>()
+            .AddScoped<IForStoringOutbox, SqliteOutboxStore>();
 
     // ponytail: EnsureCreated keeps no schema history; switch to EF migrations before the first schema change ships
     public static async Task EnsureSqliteSchemaAsync(this IServiceProvider services)

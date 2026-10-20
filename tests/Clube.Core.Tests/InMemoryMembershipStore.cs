@@ -1,18 +1,23 @@
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Memberships;
+using Clube.Core.Domain.Vouchers;
 using Clube.Core.Ports.Driven;
 
 namespace Clube.Core.Tests;
 
-// Second driven adapter for the same port: lets the hexagon run with no database at all.
-internal sealed class InMemoryMembershipStore : IForStoringMemberships
+// Second driven adapter for the same ports: lets the hexagon run with no database at all.
+internal sealed class InMemoryMembershipStore : IForStoringMemberships, IForStoringOutbox
 {
     private readonly Dictionary<MembershipId, Membership> savedMembers = [];
     private readonly List<LedgerTransaction> postedTransactions = [];
     private readonly List<Membership> pendingMembers = [];
     private readonly List<LedgerTransaction> pendingTransactions = [];
+    private readonly Dictionary<Guid, OutboxMessage> savedOutbox = [];
+    private readonly List<OutboxMessage> pendingOutbox = [];
 
     public IReadOnlyList<LedgerTransaction> PostedTransactions => postedTransactions;
+
+    public IReadOnlyCollection<OutboxMessage> Outbox => savedOutbox.Values;
 
     public Task<Membership?> FindAsync(MembershipId id, CancellationToken ct) =>
         Task.FromResult(savedMembers.GetValueOrDefault(id));
@@ -43,6 +48,20 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
 
     public void Append(LedgerTransaction transaction) => pendingTransactions.Add(transaction);
 
+    public void Enqueue(OutboxMessage message) => pendingOutbox.Add(message);
+
+    public Task<IReadOnlyList<OutboxMessage>> FindDueAsync(DateTimeOffset now, int limit, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<OutboxMessage>>([.. savedOutbox.Values
+            .Where(message => message.Status == OutboxStatus.Pending && message.NextAttemptAt <= now)
+            .OrderBy(message => message.NextAttemptAt)
+            .Take(limit)]);
+
+    public Task RecordAttemptAsync(OutboxMessage message, CancellationToken ct)
+    {
+        savedOutbox[message.Id] = message;
+        return Task.CompletedTask;
+    }
+
     public Task<bool> TrySaveChangesAsync(CancellationToken ct)
     {
         bool rejected = HolderTaken() || KeyTaken();
@@ -50,6 +69,7 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
 
         pendingMembers.Clear();
         pendingTransactions.Clear();
+        pendingOutbox.Clear();
         return Task.FromResult(!rejected);
     }
 
@@ -74,5 +94,6 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
     {
         pendingMembers.ForEach(membership => savedMembers[membership.Id] = membership);
         postedTransactions.AddRange(pendingTransactions);
+        pendingOutbox.ForEach(message => savedOutbox[message.Id] = message);
     }
 }

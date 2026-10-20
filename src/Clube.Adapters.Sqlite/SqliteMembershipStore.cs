@@ -1,5 +1,6 @@
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Memberships;
+using Clube.Core.Domain.Vouchers;
 using Clube.Core.Ports.Driven;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
@@ -68,6 +69,8 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
         appended.Add(transaction);
         db.LedgerTransactions.Add(ToRow(transaction));
     }
+
+    public void Enqueue(OutboxMessage message) => db.OutboxMessages.Add(OutboxMessageRow.From(message));
 
     private static LedgerTransactionRow ToRow(LedgerTransaction transaction) => new()
     {

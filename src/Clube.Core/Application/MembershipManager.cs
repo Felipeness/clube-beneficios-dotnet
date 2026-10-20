@@ -1,6 +1,7 @@
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Memberships;
 using Clube.Core.Domain.Shared;
+using Clube.Core.Domain.Vouchers;
 using Clube.Core.Ports.Driven;
 using Clube.Core.Ports.Driving;
 
@@ -93,6 +94,8 @@ public sealed class MembershipManager(IForStoringMemberships memberships, IForId
         var balance = await memberships.BalanceOfAsync(membership.Account, ct);
         if (!membership.Redeem(reward, balance, key, PostingContextNow()).TryGetValue(out var posting, out var rejected)) return rejected;
 
+        // Enqueued, not called: the partner hears about it only if the debit commits, and keeps hearing until it answers.
+        memberships.Enqueue(OutboxMessage.For(RewardRedeemed.Of(posting, id, reward)));
         return await PostAsync(membership, posting, ct);
     }
 
@@ -109,6 +112,7 @@ public sealed class MembershipManager(IForStoringMemberships memberships, IForId
         if (await memberships.FindPostedFingerprintAsync(IdempotencyKey.ForReversal(transactionId), ct) is not null) return await ViewOfAsync(membership, ct);
         if (!membership.Reverse(original, PostingContextNow()).TryGetValue(out var posting, out var rejected)) return rejected;
 
+        if (original.Touches(LedgerAccount.Redemptions)) memberships.Enqueue(OutboxMessage.For(RedemptionReversed.Of(posting, id, original.Id)));
         return await PostAsync(membership, posting, ct);
     }
 

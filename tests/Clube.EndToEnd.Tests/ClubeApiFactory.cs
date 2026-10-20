@@ -1,5 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
+using Clube.Adapters.Partners;
+using Clube.Core.Domain.Vouchers;
+using Clube.Core.Ports.Driving;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -59,7 +62,18 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Authentication:Schemes:Bearer:ValidAudiences:0", TokenAudience);
         builder.UseSetting("Authentication:Schemes:Bearer:SigningKeys:0:Issuer", TokenIssuer);
         builder.UseSetting("Authentication:Schemes:Bearer:SigningKeys:0:Value", Convert.ToBase64String(SigningKey));
-        builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Clock));
+        builder.ConfigureTestServices(services =>
+        {
+            services.AddSingleton<TimeProvider>(Clock);
+            // A relay running on its own would race the assertions; tests settle the outbox with DispatchOutboxAsync instead.
+            services.Remove(services.Single(service => service.ImplementationType == typeof(OutboxWorker)));
+        });
+    }
+
+    public async Task<IReadOnlyList<OutboxMessage>> DispatchOutboxAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<IForRelayingTheOutbox>().DispatchBatchAsync(default);
     }
 
     public HttpClient CreateClientAsMember(Guid membershipId) => CreateClientWith(MemberToken(membershipId));
