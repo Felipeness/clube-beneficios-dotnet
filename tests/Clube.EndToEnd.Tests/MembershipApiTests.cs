@@ -213,6 +213,48 @@ public class MembershipApiTests
         Assert.True(statement.GetProperty("responses").TryGetProperty("400", out _), "statement must document invalid paging");
     }
 
+    [Fact]
+    public async Task ReversesARedemptionAppendingToTheStatementAndKeepingTheLedgerImmutable()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var created = await SubscribeAsync(client);
+        string membership = $"/memberships/{created.Id}";
+        await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
+        await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+        var before = await client.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
+        Assert.NotNull(before);
+        Guid redemption = before.Lines.Single(line => line.AmountCents == -1000).TransactionId;
+
+        var reversed = await PostAsync<MembershipView>(client, $"{membership}/transactions/{redemption}/reversal", new { });
+        var again = await PostAsync<MembershipView>(client, $"{membership}/transactions/{redemption}/reversal", new { });
+        var after = await client.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
+
+        Assert.Equal(2000, reversed.BalanceCents);
+        Assert.Equal(2000, again.BalanceCents);
+        Assert.NotNull(after);
+        Assert.Equal([1000L, -1000L, 2000L], after.Lines.Select(line => line.AmountCents));
+        Assert.Throws<SqliteException>(() => factory.ExecuteSql("DELETE FROM ledger_transactions"));
+    }
+
+    [Fact]
+    public async Task ReportsReversalOfUnknownTransactionAndDocumentsItInOpenApi()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var created = await SubscribeAsync(client);
+        string path = $"/memberships/{created.Id}/transactions/{Guid.NewGuid()}/reversal";
+
+        var response = await SendAsync(client, path, new { }, idempotencyKey: null);
+        using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
+        JsonElement responses = document.RootElement
+            .GetProperty("paths").GetProperty("/memberships/{id}/transactions/{transactionId}/reversal").GetProperty("post").GetProperty("responses");
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.True(responses.TryGetProperty("404", out _), "reversal must document unknown transactions");
+        Assert.True(responses.TryGetProperty("422", out _), "reversal must document reversing a reversal");
+    }
+
     // The credit window only accepts periods up to the current month, so the clock walks forward with them.
     private static async Task CreditMonthsAsync(ClubeApiFactory factory, HttpClient client, Guid membershipId, int months)
     {

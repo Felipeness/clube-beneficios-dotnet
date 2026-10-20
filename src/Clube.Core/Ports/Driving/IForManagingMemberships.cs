@@ -19,4 +19,6 @@ public interface IForManagingMemberships
     Task<Result<MembershipView>> CreditMonthlyAllowanceAsync(MembershipId id, string period, CancellationToken ct);
 
     Task<Result<MembershipView>> RedeemRewardAsync(MembershipId id, string rewardId, string idempotencyKey, CancellationToken ct);
+
+    Task<Result<MembershipView>> ReverseTransactionAsync(MembershipId id, Guid transactionId, CancellationToken ct);
 }

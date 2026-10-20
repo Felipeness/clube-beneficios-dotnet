@@ -19,6 +19,9 @@ public static class MembershipErrors
     public static readonly Error NotFound =
         new("membership.not_found", "Membership not found.", ErrorKind.NotFound);
 
+    public static readonly Error TransactionNotFound =
+        new("membership.transaction_not_found", "Transaction not found for this membership.", ErrorKind.NotFound);
+
     public static readonly Error RewardNotFound =
         new("membership.reward_not_found", "Reward not found.", ErrorKind.NotFound);
 

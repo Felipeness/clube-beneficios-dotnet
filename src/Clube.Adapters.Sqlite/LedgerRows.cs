@@ -15,6 +15,7 @@ internal sealed class LedgerTransactionRow
     public required string ActorKind { get; init; }
     public string? ActorId { get; init; }
     public required string CorrelationId { get; init; }
+    public Guid? ReversesTransactionId { get; init; }
     public List<LedgerEntryRow> Entries { get; init; } = [];
 }
 

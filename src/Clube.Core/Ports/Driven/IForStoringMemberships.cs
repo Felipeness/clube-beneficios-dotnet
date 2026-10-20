@@ -20,6 +20,9 @@ public interface IForStoringMemberships
     /// <summary>The fingerprint stored with the transaction posted under this key, or null when the key is unused.</summary>
     Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct);
 
+    /// <summary>A posted transaction with its entries, or null when no transaction has this id.</summary>
+    Task<PostedTransaction?> FindTransactionAsync(Guid id, CancellationToken ct);
+
     void Add(Membership membership);
 
     /// <summary>Append-only: the store must never update or delete a posted transaction.</summary>

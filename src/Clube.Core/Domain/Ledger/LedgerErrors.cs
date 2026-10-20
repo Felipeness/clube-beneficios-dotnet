@@ -16,6 +16,9 @@ public static class LedgerErrors
     public static readonly Error NonPositiveAmount =
         new("ledger.non_positive_amount", "Every entry must move a positive amount.", ErrorKind.BusinessRule);
 
+    public static readonly Error ReversalOfReversal =
+        new("ledger.reversal_of_reversal", "A reversal cannot be reversed.", ErrorKind.BusinessRule);
+
     public static readonly Error Unbalanced =
         new("ledger.unbalanced", "Debits and credits must sum to zero.", ErrorKind.BusinessRule);
 }

@@ -14,6 +14,9 @@ public readonly record struct IdempotencyKey
     // One allowance per member per period: a retried charge maps to the same key and is refused by the store.
     public static IdempotencyKey ForAllowance(MembershipId id, BillingPeriod period) => new($"allowance:{id}:{period}");
 
+    // One reversal per original transaction: asking again maps to the same key.
+    public static IdempotencyKey ForReversal(Guid originalTransactionId) => new($"reversal:{originalTransactionId}");
+
     // Scoped per membership so two members can never collide on the same client-generated key.
     public static Result<IdempotencyKey> ForRedemption(MembershipId id, string clientKey) =>
         string.IsNullOrWhiteSpace(clientKey) || clientKey.Length > MaxClientKeyLength

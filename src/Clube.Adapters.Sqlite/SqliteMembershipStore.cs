@@ -47,6 +47,17 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
             .Select(transaction => (string?)transaction.Fingerprint)
             .SingleOrDefaultAsync(ct);
 
+    public async Task<PostedTransaction?> FindTransactionAsync(Guid id, CancellationToken ct)
+    {
+        var row = await db.LedgerTransactions.Include(transaction => transaction.Entries).SingleOrDefaultAsync(transaction => transaction.Id == id, ct);
+        return row is null ? null : new PostedTransaction(row.Id, row.Description, [.. row.Entries.Select(ToEntry)], row.ReversesTransactionId);
+    }
+
+    private static LedgerEntry ToEntry(LedgerEntryRow row) => new(
+        LedgerAccount.FromStored(row.Account),
+        Money.FromCents(Math.Abs(row.SignedCents)),
+        row.SignedCents < 0 ? EntryDirection.Debit : EntryDirection.Credit);
+
     public void Add(Membership membership) => db.Memberships.Add(membership);
 
     public void Append(LedgerTransaction transaction)
@@ -65,6 +76,7 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
         ActorKind = transaction.Header.Caller.Actor.Kind.ToString(),
         ActorId = transaction.Header.Caller.Actor.Id,
         CorrelationId = transaction.Header.Caller.CorrelationId,
+        ReversesTransactionId = transaction.Header.ReversesTransactionId,
         Entries = [.. transaction.Entries.Select(entry => new LedgerEntryRow
         {
             TransactionId = transaction.Id,

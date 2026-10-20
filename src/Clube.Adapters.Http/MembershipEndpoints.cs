@@ -58,6 +58,11 @@ internal static class MembershipEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+        // Anonymous for now: once callers authenticate, only operators may reverse a posting.
+        memberships.MapPost("/{id:guid}/transactions/{transactionId:guid}/reversal", Reverse)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
     }
 
     private static async Task<Results<Created<MembershipView>, ProblemHttpResult>> Subscribe(
@@ -119,6 +124,13 @@ internal static class MembershipEndpoints
         CancellationToken ct)
     {
         var result = await memberships.RedeemRewardAsync(new MembershipId(id), request.RewardId, idempotencyKey, ct);
+        return result.TryGetValue(out var view, out var error) ? TypedResults.Ok(view) : error.ToProblem();
+    }
+
+    private static async Task<Results<Ok<MembershipView>, ProblemHttpResult>> Reverse(
+        Guid id, Guid transactionId, IForManagingMemberships memberships, CancellationToken ct)
+    {
+        var result = await memberships.ReverseTransactionAsync(new MembershipId(id), transactionId, ct);
         return result.TryGetValue(out var view, out var error) ? TypedResults.Ok(view) : error.ToProblem();
     }
 }

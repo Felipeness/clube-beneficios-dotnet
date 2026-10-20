@@ -61,10 +61,17 @@ public sealed class Membership
         return PostTransfer(Account, LedgerAccount.Redemptions, reward.Price, new TransactionHeader(key, RedemptionFingerprint(reward), $"Redemption {reward.Id}", context.At, context.Caller));
     }
 
-    private Result<LedgerTransaction> PostTransfer(LedgerAccount from, LedgerAccount to, Money amount, TransactionHeader header)
+    // The balance may end up negative (a credit reversed after being spent): that is a debt, and Redeem
+    // keeps refusing new redemptions until the balance covers the price again.
+    public Result<LedgerTransaction> Reverse(PostedTransaction original, PostingContext context) =>
+        BumpVersionOnSuccess(LedgerTransaction.Reverse(original, context));
+
+    private Result<LedgerTransaction> PostTransfer(LedgerAccount from, LedgerAccount to, Money amount, TransactionHeader header) =>
+        BumpVersionOnSuccess(LedgerTransaction.Transfer(from, to, amount, header));
+
+    private Result<LedgerTransaction> BumpVersionOnSuccess(Result<LedgerTransaction> posting)
     {
-        Result<LedgerTransaction> transfer = LedgerTransaction.Transfer(from, to, amount, header);
-        if (transfer.TryGetValue(out _, out _)) LedgerVersion++;
-        return transfer;
+        if (posting.TryGetValue(out _, out _)) LedgerVersion++;
+        return posting;
     }
 }

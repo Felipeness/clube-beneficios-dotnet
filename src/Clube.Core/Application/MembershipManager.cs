@@ -71,6 +71,20 @@ public sealed class MembershipManager(IForStoringMemberships memberships, IForId
         return await PostAsync(membership, posting, ct);
     }
 
+    public async Task<Result<MembershipView>> ReverseTransactionAsync(MembershipId id, Guid transactionId, CancellationToken ct)
+    {
+        var membership = await memberships.FindAsync(id, ct);
+        if (membership is null) return MembershipErrors.NotFound;
+        // Another member's transaction looks the same as a missing one: nothing to learn from the difference.
+        var original = await memberships.FindTransactionAsync(transactionId, ct);
+        if (original is null || !original.Touches(membership.Account)) return MembershipErrors.TransactionNotFound;
+        // A retried reversal answers with the current state; the unique key is what guarantees it under a race.
+        if (await memberships.FindPostedFingerprintAsync(IdempotencyKey.ForReversal(transactionId), ct) is not null) return await ViewOfAsync(membership, ct);
+        if (!membership.Reverse(original, PostingContextNow()).TryGetValue(out var posting, out var rejected)) return rejected;
+
+        return await PostAsync(membership, posting, ct);
+    }
+
     private PostingContext PostingContextNow() => new(clock.GetUtcNow(), caller.Current);
 
     private async Task<Result<MembershipView>> PostAsync(Membership membership, LedgerTransaction posting, CancellationToken ct)

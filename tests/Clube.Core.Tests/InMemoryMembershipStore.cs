@@ -30,6 +30,12 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
     public Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct) =>
         Task.FromResult(postedTransactions.FirstOrDefault(transaction => transaction.Header.Key == key)?.Header.Fingerprint);
 
+    public Task<PostedTransaction?> FindTransactionAsync(Guid id, CancellationToken ct)
+    {
+        var found = postedTransactions.FirstOrDefault(transaction => transaction.Id == id);
+        return Task.FromResult(found is null ? null : new PostedTransaction(found.Id, found.Header.Description, found.Entries, found.Header.ReversesTransactionId));
+    }
+
     public void Add(Membership membership) => pendingMembers.Add(membership);
 
     public void Append(LedgerTransaction transaction) => pendingTransactions.Add(transaction);
