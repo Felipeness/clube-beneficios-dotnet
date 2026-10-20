@@ -41,7 +41,7 @@ flowchart LR
 | **Hexágono** | regra de negócio e casos de uso. Não referencia nenhum framework | `src/Clube.Core` (zero pacote no csproj) |
 | **Porta de entrada** (driving / primary port) | o que o mundo pode **pedir** ao hexágono | `Ports/Driving/IForManagingMemberships.cs` |
 | **Porta de saída** (driven / secondary port) | o que o hexágono **precisa** do mundo, descrito nos termos dele | `Ports/Driven/IForStoringMemberships.cs` |
-| **Adaptador de entrada** (driving adapter) | traduz uma tecnologia em chamadas na porta de entrada | `Clube.Adapters.Http` (HTTP para porta), `MembershipManagerTests` (teste para porta) |
+| **Adaptador de entrada** (driving adapter) | traduz uma tecnologia em chamadas na porta de entrada | `Clube.Adapters.Http` (HTTP para porta), `Clube.Adapters.DevTools` (só Development), `MembershipManagerTests` (teste para porta) |
 | **Adaptador de saída** (driven adapter) | implementa a porta de saída com uma tecnologia concreta | `Clube.Adapters.Sqlite` (EF Core), `InMemoryMembershipStore` (teste) |
 | **Configurador** | o único lugar que conhece tudo e pluga adaptador em porta | `src/Clube.Host/Program.cs` |
 
@@ -191,6 +191,7 @@ dotnet run --project src/Clube.Host
 | POST | `/memberships/{id}/redemptions` | o próprio membro | `{ "rewardId": "cinema-ticket" }` + header `Idempotency-Key: <chave do cliente>` |
 | POST | `/memberships/{id}/transactions/{transactionId}/reversal` | operador | sem corpo (estorno total) |
 | GET | `/operations/reconciliation` | operador | query `date=yyyy-MM-dd` (dia de São Paulo) |
+| GET | `/rewards` | aberto | catálogo: `id`, `name`, `listPriceCents`, `discountPercent` e `priceCents` (preço final, ex.: 2541 pra garrafa) |
 | GET | `/health` | aberto | liveness, sem checks |
 | GET | `/health/ledger` | aberto (sem token) | soma dos lançamentos: 200 `Healthy` ou 503 `Unhealthy` com `differenceCents` |
 | POST | `/webhooks/pix` | PSP (assinatura HMAC, sem JWT) | evento `pix.received` ou `pix.refunded` + headers `X-Pix-Timestamp` e `X-Pix-Signature` |
@@ -211,3 +212,30 @@ bash scripts/send-pix-webhook.sh <membershipId> [competência yyyy-MM] [endToEnd
 ```
 
 Repetir com o mesmo `endToEndId` mostra a reentrega idempotente; com outro, pra mesma competência, mostra o `duplicate_payment`. `PIX_WEBHOOK_SECRET` e `PIX_WEBHOOK_URL` trocam o segredo e o destino.
+
+## Ferramentas de desenvolvimento
+
+**Só existem com `ASPNETCORE_ENVIRONMENT=Development`.** Fora dele as rotas `/dev/*` respondem 404, os serviços nem são registrados e o CORS não é configurado. Todas são anônimas (ambiente local) e aparecem no OpenAPI com a tag `Dev`. O app nunca assina token nem webhook sozinho: ele pede ao backend.
+
+| Método | Rota | Corpo | Resposta 200 |
+|---|---|---|---|
+| POST | `/dev/tokens` | `{ "role": "member", "membershipId": "<guid>" }` ou `{ "role": "operator", "name": "ana" }` | `{ accessToken, expiresAt }` (8h) |
+| POST | `/dev/pix-payments` | `{ "membershipId": "<guid>", "period": "2026-10" }` | `{ endToEndId, result }` com `credited`, `already_credited` ou `duplicate_payment`; se o webhook recusar, o mesmo status e o ProblemDetails dele |
+| POST | `/dev/pix-refunds` | `{ "originalEndToEndId": "E..." }` | `{ endToEndId, result }` com `refunded`, `already_refunded` ou `unknown_payment` |
+| POST | `/dev/jobs/outbox` | vazio | `{ attempted, delivered, rescheduled, deadLettered }` |
+| POST | `/dev/jobs/credit-expiry` | vazio | `{ cutoff, expired, expiredCents, failures }` |
+| POST | `/dev/jobs/reconciliation` | `{ "date": "2026-10-20" }` | o mesmo relatório de `GET /operations/reconciliation` |
+| GET | `/dev/clock` | | `{ now, offsetDays }` |
+| POST | `/dev/clock` | `{ "advanceDays": 30 }` ou `{ "reset": true }` | `{ now, offsetDays }` |
+
+**Como o app usa:** pede um token (`/dev/tokens`) e manda `Authorization: Bearer` nas rotas protegidas; "paga" a mensalidade com `/dev/pix-payments` e vê o saldo subir; roda os jobs sob demanda; e avança o relógio (`/dev/clock`) pra mostrar a janela de competência e a expiração de 12 meses sem esperar. O catálogo que ele lista vem de `GET /rewards`, que não é ferramenta de dev: é API pública, no adaptador HTTP.
+
+**Rede local:** o perfil `http` do `launchSettings.json` escuta em `http://0.0.0.0:5135`, então o celular na mesma rede alcança pelo IP do PC (o firewall do Windows pergunta na primeira vez). O CORS libera só `http://localhost:8081` e `http://localhost:19006` (Expo web), e só em Development; o app nativo não passa por CORS.
+
+### Decisões
+
+- **Projeto próprio (`Clube.Adapters.DevTools`), não um grupo dentro do adaptador HTTP:** a API pública não tem como citar as ferramentas, e tirar as duas chamadas do `Program.cs` (`AddDevToolsAdapter` e `UseDevTools`) remove rotas, serviços e CORS de uma vez. As duas chamadas ainda se recusam a rodar fora de Development, então um `if` esquecido no Host derruba o boot em vez de expor emissão anônima de token.
+- **O Pix simulado passa pelo endpoint real:** o simulador monta o evento com os mesmos tipos do webhook, assina com `Psp:WebhookSecret` como o PSP faria e entrega ao `RequestDelegate` do `/webhooks/pix` em memória (achado pelo nome do endpoint). Quem confere a assinatura é o `PixSignature` de produção, sem cópia da regra. O teste prova: com o segredo trocado em runtime, o simulado leva 401. A liquidação também entra no PSP fake, então a reconciliação do dia sai limpa; um segundo pagamento da mesma competência (`duplicate_payment`) vira `MissingInLedger`, que é o alarme certo pra dinheiro que entrou e não foi creditado.
+- **Token com as opções do JwtBearer:** issuer, audience e chave vêm das `JwtBearerOptions` já configuradas (inclusive a chave do `dotnet user-jwts`, que mora nos user secrets), então o token emitido é aceito por construção. Sem chave simétrica configurada a rota responde 500 dizendo pra rodar `dotnet user-jwts create`. As claims usam as constantes públicas de `ClubeClaims`. A validade do token segue o relógio real: o handler de JWT não olha o relógio de dev.
+- **Relógio de dev:** `DevClock` é um `TimeProvider` singleton que soma um deslocamento em dias (até 3650) ao relógio base; só é registrado em Development. Os timers continuam no relógio base, então os workers mantêm o ritmo real. Nos testes ele fica por cima do `FakeTimeProvider`, com deslocamento zero, sem atropelar o fake.
+- **Correção junto:** a validação de boot fora de Development só enxergava `ValidIssuers` (lista), mas a chave de configuração `ValidIssuer` preenche a propriedade singular, então um host de produção configurado como o README manda não subia. Agora vale um ou outro, o mesmo vale pra audience.

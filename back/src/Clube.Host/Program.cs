@@ -1,3 +1,4 @@
+using Clube.Adapters.DevTools;
 using Clube.Adapters.Http;
 using Clube.Adapters.Jobs;
 using Clube.Adapters.Partners;
@@ -21,10 +22,13 @@ builder.Services.AddSqliteAdapter(connectionString);
 builder.Services.AddHttpAdapter();
 builder.Services.AddPartnersAdapter();
 builder.Services.AddJobsAdapter();
+// Dev tooling mints tokens, fakes payments and moves the clock: it is not even registered outside Development.
+if (builder.Environment.IsDevelopment()) builder.Services.AddDevToolsAdapter(builder.Environment);
 
 var app = builder.Build();
 
 await app.Services.PrepareSqliteSchemaAsync(migrateOnBoot: app.Environment.IsDevelopment());
+if (app.Environment.IsDevelopment()) app.UseDevTools();
 app.UseHttpAdapter();
 
 app.Run();

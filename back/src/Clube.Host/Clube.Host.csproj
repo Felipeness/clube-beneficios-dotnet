@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\Clube.Adapters.DevTools\Clube.Adapters.DevTools.csproj" />
     <ProjectReference Include="..\Clube.Adapters.Http\Clube.Adapters.Http.csproj" />
     <ProjectReference Include="..\Clube.Adapters.Jobs\Clube.Adapters.Jobs.csproj" />
     <ProjectReference Include="..\Clube.Adapters.Partners\Clube.Adapters.Partners.csproj" />

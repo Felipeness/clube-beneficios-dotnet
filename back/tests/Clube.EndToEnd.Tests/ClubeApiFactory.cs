@@ -1,5 +1,6 @@
 ﻿using System.Net.Http.Headers;
 using System.Text;
+using Clube.Adapters.DevTools;
 using Clube.Adapters.Jobs;
 using Clube.Adapters.Partners;
 using Clube.Core.Domain.Memberships;
@@ -72,7 +73,9 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("Authentication:Schemes:Bearer:SigningKeys:0:Value", Convert.ToBase64String(SigningKey));
         builder.ConfigureTestServices(services =>
         {
-            services.AddSingleton<TimeProvider>(Clock);
+            // The dev clock sits on top of the fake: offset 0 changes nothing, and /dev/clock moves it for the tests that ask.
+            services.AddSingleton(new DevClock(Clock));
+            services.AddSingleton<TimeProvider>(provider => provider.GetRequiredService<DevClock>());
             // A relay running on its own would race the assertions; tests settle the outbox with DispatchOutboxAsync instead.
             services.Remove(services.Single(service => service.ImplementationType == typeof(OutboxWorker)));
             // Same for credit expiry: a daily run at startup would expire under the tests' feet; RunCreditExpiryAsync triggers it.

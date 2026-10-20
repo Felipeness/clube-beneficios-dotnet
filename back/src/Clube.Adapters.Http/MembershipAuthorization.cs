@@ -6,7 +6,7 @@ namespace Clube.Adapters.Http;
 
 // The claims this API trusts, as the identity provider (or dotnet user-jwts) writes them. Inbound claim mapping is off,
 // so these are the raw JWT names and nothing is renamed behind the reader's back.
-internal static class ClubeClaims
+public static class ClubeClaims
 {
     public const string Subject = "sub";
     public const string Role = "role";

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Clube.Adapters.Http;
 
-internal sealed class PspOptions
+public sealed class PspOptions
 {
     public const string Section = "Psp";
     public const int MinimumSecretLength = 32;
