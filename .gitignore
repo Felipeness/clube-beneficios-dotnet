@@ -481,3 +481,6 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 *.db*
+
+# Local study notes, not versioned
+docs/guia-tech-lead-csharp.md
