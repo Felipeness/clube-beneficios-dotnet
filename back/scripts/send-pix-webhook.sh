@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Plays the Pix provider against the local API: signs a pix.received event (HMAC-SHA256 of "{timestamp}.{body}")
 # and posts it, since Scalar cannot sign requests.
-# Usage: scripts/send-pix-webhook.sh <membershipId> [period yyyy-MM] [endToEndId] [amountCents]
+# Usage: back/scripts/send-pix-webhook.sh <membershipId> [period yyyy-MM] [endToEndId] [amountCents]
 # Re-run with the same endToEndId to see a redelivery; with another one for the same period to see duplicate_payment.
 set -euo pipefail
 

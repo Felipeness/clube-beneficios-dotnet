@@ -484,3 +484,11 @@ $RECYCLE.BIN/
 
 # Local study notes, not versioned
 docs/guia-tech-lead-csharp.md
+
+# Node / Expo (front/)
+node_modules/
+.expo/
+dist/
+web-build/
+*.tsbuildinfo
+.env*.local

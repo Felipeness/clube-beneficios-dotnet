@@ -11,6 +11,9 @@ indent_size = 4
 [*.{csproj,props,slnx,json,yml,yaml}]
 indent_size = 2
 
+[*.{ts,tsx,js,jsx,json}]
+indent_size = 2
+
 [*.cs]
 # var only where the type is visible on the right side; built-in types (int, decimal, string...)
 # stay explicit because numeric precision matters in a domain that handles credits and money.
