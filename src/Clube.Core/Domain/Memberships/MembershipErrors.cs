@@ -22,9 +22,7 @@ public static class MembershipErrors
     public static readonly Error ConcurrentUpdate =
         new("membership.concurrent_update", "Membership changed during the request, retry.", ErrorKind.Conflict);
 
-    public static readonly Error PeriodOutOfOrder =
-        new("membership.period_out_of_order", "Billing period precedes the last credited one.", ErrorKind.BusinessRule);
 
-    public static readonly Error InsufficientCredits =
-        new("membership.insufficient_credits", "Not enough credits for this reward.", ErrorKind.BusinessRule);
+    public static readonly Error InsufficientBalance =
+        new("membership.insufficient_balance", "Balance does not cover this reward.", ErrorKind.BusinessRule);
 }

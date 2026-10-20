@@ -13,18 +13,48 @@ public class MembershipManagerTests
     private static IForManagingMemberships NewHexagon() =>
         new MembershipManager(new InMemoryMembershipStore(), TimeProvider.System);
 
+    private static async Task<MembershipId> SubscribeAsync(IForManagingMemberships memberships) =>
+        new(ResultAssert.Ok(await memberships.SubscribeAsync(Holder, default)).Id);
+
     [Fact]
-    public async Task CreditsAndRedeemsThroughTheDrivingPort()
+    public async Task CreditsEachPeriodOnlyOnce()
     {
         var memberships = NewHexagon();
-        var created = ResultAssert.Ok(await memberships.SubscribeAsync(Holder, default));
-        var id = new MembershipId(created.Id);
+        var id = await SubscribeAsync(memberships);
 
         await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
-        var redeemed = ResultAssert.Ok(await memberships.RedeemRewardAsync(id, "cinema-ticket", default));
+        var retried = ResultAssert.Ok(await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default));
 
-        Assert.Equal(10, redeemed.Balance);
-        Assert.Equal("2026-10", redeemed.LastCreditedPeriod);
+        Assert.Equal(Membership.MonthlyAllowance.Cents, retried.BalanceCents);
+    }
+
+    [Fact]
+    public async Task ChargesARetriedRedemptionOnce()
+    {
+        var memberships = NewHexagon();
+        var id = await SubscribeAsync(memberships);
+        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+
+        await memberships.RedeemRewardAsync(id, "cinema-ticket", "order-42", default);
+        var retried = ResultAssert.Ok(await memberships.RedeemRewardAsync(id, "cinema-ticket", "order-42", default));
+
+        Assert.Equal(1000, retried.BalanceCents);
+    }
+
+    [Fact]
+    public async Task ExplainsTheBalanceThroughTheStatement()
+    {
+        var memberships = NewHexagon();
+        var id = await SubscribeAsync(memberships);
+        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, "2026-11", default);
+        await memberships.RedeemRewardAsync(id, "thermal-bottle", "order-1", default);
+
+        var statement = ResultAssert.Ok(await memberships.GetStatementAsync(id, default));
+
+        Assert.Equal(4000 - 2541, statement.BalanceCents);
+        Assert.Equal([-2541L, 2000L, 2000L], statement.Lines.Select(line => line.AmountCents));
+        Assert.Equal(statement.BalanceCents, statement.Lines.Sum(line => line.AmountCents));
     }
 
     [Fact]

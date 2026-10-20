@@ -1,6 +1,6 @@
 # clube-beneficios-dotnet
 
-Clube de benefícios por assinatura em .NET 10 com **arquitetura hexagonal (ports and adapters)**: o membro assina com CPF, recebe 20 créditos por competência e troca créditos por recompensas.
+Clube de benefícios por assinatura em .NET 10 com **arquitetura hexagonal (ports and adapters)**: o membro assina com CPF, recebe R$ 20,00 por competência e troca o saldo por recompensas. O saldo não é um campo: é a soma de um **ledger de partidas dobradas**, append-only e idempotente.
 
 ## A ideia em uma frase
 
@@ -52,8 +52,8 @@ A direção da dependência é a regra que segura tudo: **adaptadores dependem d
 `POST /memberships/{id}/redemptions`
 
 1. **Adaptador de entrada HTTP** (`MembershipEndpoints.Redeem`) lê o JSON, monta o `MembershipId` e chama `IForManagingMemberships.RedeemRewardAsync`.
-2. **Hexágono** (`MembershipManager`) busca o membro pela porta de saída, aplica a regra (`Membership.Redeem`) e pede pra salvar.
-3. **Adaptador de saída SQLite** (`SqliteMembershipStore`) faz o `UPDATE`, com o saldo como concurrency token.
+2. **Hexágono** (`MembershipManager`) busca o membro e o saldo pela porta de saída, e `Membership.Redeem` gera uma transação de ledger que debita o membro e credita a conta de resgates.
+3. **Adaptador de saída SQLite** (`SqliteMembershipStore`) grava a transação e incrementa o `LedgerVersion` do membro no mesmo `SaveChanges`.
 4. O hexágono devolve um `Result<MembershipView>`, e o adaptador HTTP o traduz em 200 ou ProblemDetails (400, 404, 409 ou 422).
 
 Trocar HTTP por gRPC ou fila, ou SQLite por Postgres, é escrever outro adaptador. O `Clube.Core` não muda uma linha.
@@ -79,8 +79,19 @@ O domínio fica numa pasta dentro do `Core`, não num projeto separado: no hexag
 
 ## Decisões que valem a leitura
 
-- **Crédito idempotente por competência:** reenviar a cobrança do mesmo mês não credita duas vezes, e uma competência fora de ordem é rejeitada.
-- **Concorrência:** `Balance` é concurrency token, então dois resgates simultâneos geram 409 em vez de perder uma atualização.
+### Dinheiro e ledger
+
+- **`Money` em centavos (`long`):** exato e igual no banco (`bigint`), no JSON e no JavaScript do front. `decimal` só aparece na conta de percentual.
+- **Arredondamento comercial:** `PercentOf` usa `MidpointRounding.AwayFromZero`. O default do `Math.Round` é o bancário (`ToEven`), que muda centavos no ponto médio: a garrafa térmica (R$ 29,90 com 15% off) sai a R$ 25,41, e com o default sairia a R$ 25,42.
+- **`checked` nas somas:** overflow lança exceção em vez de virar número negativo.
+- **Partidas dobradas:** toda transação tem 2 lançamentos ou mais, que somam zero (`LedgerTransaction.Post`). O crédito mensal sai de `clube:allowance-funding` e o resgate vai pra `clube:redemptions`, então as contas do clube mostram passivo e gasto.
+- **Append-only no banco:** triggers no SQLite abortam qualquer `UPDATE` ou `DELETE` em `ledger_entries` e `ledger_transactions`. Erro se corrige com lançamento de estorno.
+- **Idempotência:** cada transação tem uma chave única. O crédito usa `allowance:{membro}:{competência}` e o resgate exige o header `Idempotency-Key`. Uma requisição repetida responde com o estado atual e não cobra de novo.
+- **Concorrência:** cada lançamento incrementa `Membership.LedgerVersion`, que é concurrency token. Dois resgates que leram o mesmo saldo não conseguem gastá-lo duas vezes, e o segundo recebe 409.
+- **Extrato:** `GET /memberships/{id}/statement` lista os lançamentos que explicam o saldo, com limite de 50.
+
+### Outras
+
 - **Unicidade de CPF na porta de saída:** quem garante é o índice único (ou o store em memória). Não há pré-checagem, que correria risco de race.
 - **CPF mascarado** no `ToString` e na resposta, pra não vazar PII em log.
 - **`TimeProvider` também é porta de saída:** o relógio já vem abstraído na BCL, com fake pra teste.
@@ -92,9 +103,10 @@ dotnet test
 dotnet run --project src/Clube.Host
 ```
 
-| Método | Rota | Corpo |
+| Método | Rota | Corpo / header |
 |---|---|---|
 | POST | `/memberships` | `{ "cpf": "529.982.247-25" }` |
 | GET | `/memberships/{id}` | |
+| GET | `/memberships/{id}/statement` | |
 | POST | `/memberships/{id}/allowance-credits` | `{ "period": "2026-10" }` |
-| POST | `/memberships/{id}/redemptions` | `{ "rewardId": "cinema-ticket" }` |
+| POST | `/memberships/{id}/redemptions` | `{ "rewardId": "cinema-ticket" }` + header `Idempotency-Key: <chave do cliente>` |

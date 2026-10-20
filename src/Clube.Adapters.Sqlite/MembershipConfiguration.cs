@@ -1,7 +1,6 @@
 using Clube.Core.Domain.Memberships;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace Clube.Adapters.Sqlite;
 
@@ -20,16 +19,8 @@ internal sealed class MembershipConfiguration : IEntityTypeConfiguration<Members
             .HasMaxLength(11);
         builder.HasIndex(membership => membership.Holder).IsUnique();
 
-        // Two concurrent redemptions read the same balance; the token turns the second
-        // write into a conflict instead of a silent lost update.
-        builder.Property(membership => membership.Balance)
-            .HasConversion(credits => credits.Value, value => Credits.Of(value))
-            .IsConcurrencyToken();
-
-        builder.Property(membership => membership.LastCreditedPeriod)
-            .HasConversion(new ValueConverter<BillingPeriod, DateOnly>(
-                period => period.Start,
-                start => BillingPeriod.Containing(start)));
+        // Every posting bumps the version; a stale writer fails here instead of overspending the balance.
+        builder.Property(membership => membership.LedgerVersion).IsConcurrencyToken();
     }
 
     private static Cpf RehydrateCpf(string digits) =>

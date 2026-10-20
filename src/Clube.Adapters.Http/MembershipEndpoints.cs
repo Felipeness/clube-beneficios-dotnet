@@ -4,6 +4,7 @@ using Clube.Core.Ports.Driving;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 
 namespace Clube.Adapters.Http;
@@ -13,11 +14,11 @@ public sealed record SubscribeRequest(
     string Cpf);
 
 public sealed record CreditAllowanceRequest(
-    [property: Description("Billing period as yyyy-MM. Re-sending the same period is a no-op.")]
+    [property: Description("Billing period as yyyy-MM. Credits R$ 20,00 once per period; re-sending it is a no-op.")]
     string Period);
 
 public sealed record RedeemRequest(
-    [property: Description("One of: cinema-ticket (10), perfume-kit (20), thermal-bottle (40).")]
+    [property: Description("One of: cinema-ticket (R$ 10,00), perfume-kit (R$ 20,00), thermal-bottle (R$ 29,90 with 15% off: R$ 25,41).")]
     string RewardId);
 
 // Driving adapter: translates HTTP into calls on the driving port and Results back into HTTP.
@@ -35,12 +36,14 @@ internal static class MembershipEndpoints
             .ProducesProblem(StatusCodes.Status409Conflict);
         memberships.MapGet("/{id:guid}", Get)
             .ProducesProblem(StatusCodes.Status404NotFound);
+        memberships.MapGet("/{id:guid}/statement", GetStatement)
+            .ProducesProblem(StatusCodes.Status404NotFound);
         memberships.MapPost("/{id:guid}/allowance-credits", CreditAllowance)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict)
-            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
+            .ProducesProblem(StatusCodes.Status409Conflict);
         memberships.MapPost("/{id:guid}/redemptions", Redeem)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
@@ -62,6 +65,13 @@ internal static class MembershipEndpoints
         return result.TryGetValue(out var view, out var error) ? TypedResults.Ok(view) : error.ToProblem();
     }
 
+    private static async Task<Results<Ok<StatementView>, ProblemHttpResult>> GetStatement(
+        Guid id, IForManagingMemberships memberships, CancellationToken ct)
+    {
+        var result = await memberships.GetStatementAsync(new MembershipId(id), ct);
+        return result.TryGetValue(out var statement, out var error) ? TypedResults.Ok(statement) : error.ToProblem();
+    }
+
     private static async Task<Results<Ok<MembershipView>, ProblemHttpResult>> CreditAllowance(
         Guid id, CreditAllowanceRequest request, IForManagingMemberships memberships, CancellationToken ct)
     {
@@ -70,9 +80,14 @@ internal static class MembershipEndpoints
     }
 
     private static async Task<Results<Ok<MembershipView>, ProblemHttpResult>> Redeem(
-        Guid id, RedeemRequest request, IForManagingMemberships memberships, CancellationToken ct)
+        Guid id,
+        RedeemRequest request,
+        // Required: a missing header is a 400, so a client cannot redeem without making retries safe.
+        [FromHeader(Name = "Idempotency-Key")] string idempotencyKey,
+        IForManagingMemberships memberships,
+        CancellationToken ct)
     {
-        var result = await memberships.RedeemRewardAsync(new MembershipId(id), request.RewardId, ct);
+        var result = await memberships.RedeemRewardAsync(new MembershipId(id), request.RewardId, idempotencyKey, ct);
         return result.TryGetValue(out var view, out var error) ? TypedResults.Ok(view) : error.ToProblem();
     }
 }

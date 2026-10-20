@@ -13,7 +13,9 @@ public interface IForManagingMemberships
 
     Task<Result<MembershipView>> GetAsync(MembershipId id, CancellationToken ct);
 
+    Task<Result<StatementView>> GetStatementAsync(MembershipId id, CancellationToken ct);
+
     Task<Result<MembershipView>> CreditMonthlyAllowanceAsync(MembershipId id, string period, CancellationToken ct);
 
-    Task<Result<MembershipView>> RedeemRewardAsync(MembershipId id, string rewardId, CancellationToken ct);
+    Task<Result<MembershipView>> RedeemRewardAsync(MembershipId id, string rewardId, string idempotencyKey, CancellationToken ct);
 }

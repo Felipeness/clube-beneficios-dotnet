@@ -17,6 +17,14 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
         keepAlive.Open();
     }
 
+    // Talks to the database behind the API's back, to prove rules that live in the schema itself.
+    public int ExecuteSql(string sql)
+    {
+        using var command = keepAlive.CreateCommand();
+        command.CommandText = sql;
+        return command.ExecuteNonQuery();
+    }
+
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>
         builder.UseSetting("ConnectionStrings:Clube", connectionString);
 

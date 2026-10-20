@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Clube.Core.Ports.Driving;
+using Microsoft.Data.Sqlite;
 
 namespace Clube.EndToEnd.Tests;
 
@@ -10,21 +11,24 @@ public class MembershipApiTests
     private const string ValidCpf = "529.982.247-25";
 
     [Fact]
-    public async Task CreditsAllowanceIdempotentlyAndRedeemsReward()
+    public async Task CreditsAndRedeemsThroughTheLedgerIdempotently()
     {
         await using var factory = new ClubeApiFactory();
         var client = factory.CreateClient();
         var created = await SubscribeAsync(client);
+        string membership = $"/memberships/{created.Id}";
 
-        await PostAsync(client, $"/memberships/{created.Id}/allowance-credits", new { period = "2026-10" });
-        var retried = await PostAsync(client, $"/memberships/{created.Id}/allowance-credits", new { period = "2026-10" });
-        var redeemed = await PostAsync(client, $"/memberships/{created.Id}/redemptions", new { rewardId = "cinema-ticket" });
-        var fetched = await client.GetFromJsonAsync<MembershipView>($"/memberships/{created.Id}");
+        await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
+        var retriedCredit = await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
+        await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+        var retriedRedemption = await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+        var statement = await client.GetFromJsonAsync<StatementView>($"{membership}/statement");
 
         Assert.Equal("***.982.247-**", created.Holder);
-        Assert.Equal(20, retried.Balance);
-        Assert.Equal(10, redeemed.Balance);
-        Assert.Equal(10, fetched?.Balance);
+        Assert.Equal(2000, retriedCredit.BalanceCents);
+        Assert.Equal(1000, retriedRedemption.BalanceCents);
+        Assert.NotNull(statement);
+        Assert.Equal([-1000L, 2000L], statement.Lines.Select(line => line.AmountCents));
     }
 
     [Fact]
@@ -37,6 +41,18 @@ public class MembershipApiTests
         var response = await client.PostAsJsonAsync("/memberships", new { cpf = ValidCpf });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RequiresIdempotencyKeyToRedeem()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var membership = await SubscribeAsync(client);
+
+        var response = await client.PostAsJsonAsync($"/memberships/{membership.Id}/redemptions", new { rewardId = "cinema-ticket" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     public static TheoryData<string, object, HttpStatusCode> InvalidRequests => new()
@@ -58,9 +74,25 @@ public class MembershipApiTests
         var client = factory.CreateClient();
         var membership = await SubscribeAsync(client);
 
-        var response = await client.PostAsJsonAsync(path.Replace("{membership}", $"/memberships/{membership.Id}"), body);
+        var response = await SendAsync(client, path.Replace("{membership}", $"/memberships/{membership.Id}"), body, "any-key");
 
         Assert.Equal(expected, response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("UPDATE ledger_entries SET SignedCents = 999999")]
+    [InlineData("DELETE FROM ledger_entries")]
+    [InlineData("DELETE FROM ledger_transactions")]
+    public async Task DatabaseRefusesToRewriteTheLedger(string sql)
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var membership = await SubscribeAsync(client);
+        await PostAsync<MembershipView>(client, $"/memberships/{membership.Id}/allowance-credits", new { period = "2026-10" });
+
+        var refused = Assert.Throws<SqliteException>(() => factory.ExecuteSql(sql));
+
+        Assert.Contains("append-only", refused.Message);
     }
 
     [Fact]
@@ -77,16 +109,23 @@ public class MembershipApiTests
         Assert.True(responses.TryGetProperty("409", out _), "POST /memberships must document duplicate holder");
     }
 
-    private static async Task<MembershipView> SubscribeAsync(HttpClient client) =>
-        await PostAsync(client, "/memberships", new { cpf = ValidCpf }, HttpStatusCode.Created);
+    private static Task<MembershipView> SubscribeAsync(HttpClient client) =>
+        PostAsync<MembershipView>(client, "/memberships", new { cpf = ValidCpf }, expected: HttpStatusCode.Created);
 
-    private static async Task<MembershipView> PostAsync(
-        HttpClient client, string path, object body, HttpStatusCode expected = HttpStatusCode.OK)
+    private static async Task<T> PostAsync<T>(
+        HttpClient client, string path, object body, string? idempotencyKey = null, HttpStatusCode expected = HttpStatusCode.OK)
     {
-        var response = await client.PostAsJsonAsync(path, body);
+        var response = await SendAsync(client, path, body, idempotencyKey);
         Assert.Equal(expected, response.StatusCode);
-        var view = await response.Content.ReadFromJsonAsync<MembershipView>();
-        Assert.NotNull(view);
-        return view;
+        var payload = await response.Content.ReadFromJsonAsync<T>();
+        Assert.NotNull(payload);
+        return payload;
+    }
+
+    private static Task<HttpResponseMessage> SendAsync(HttpClient client, string path, object body, string? idempotencyKey)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, path) { Content = JsonContent.Create(body) };
+        if (idempotencyKey is not null) request.Headers.Add("Idempotency-Key", idempotencyKey);
+        return client.SendAsync(request);
     }
 }
