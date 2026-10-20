@@ -10,6 +10,9 @@ namespace Clube.Core.Ports.Driving;
 /// </summary>
 public interface IForManagingMemberships
 {
+    /// <summary>The catalog a member can redeem from, with the final price already discounted. Public: it names no member.</summary>
+    IReadOnlyList<RewardView> ListRewards();
+
     Task<Result<MembershipView>> SubscribeAsync(string cpf, CancellationToken ct);
 
     Task<Result<MembershipView>> GetAsync(MembershipId id, CancellationToken ct);

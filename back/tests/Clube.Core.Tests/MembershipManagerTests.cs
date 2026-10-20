@@ -1,4 +1,4 @@
-using Clube.Core.Application;
+﻿using Clube.Core.Application;
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Shared;
 using Clube.Core.Domain.Memberships;
@@ -22,6 +22,15 @@ public class MembershipManagerTests
 
     private static async Task<MembershipId> SubscribeAsync(IForManagingMemberships memberships) =>
         new(ResultAssert.Ok(await memberships.SubscribeAsync(Holder, default)).Id);
+
+    [Fact]
+    public void ListsTheCatalogWithTheDiscountAppliedToTheFinalPrice()
+    {
+        var rewards = NewHexagon().ListRewards();
+
+        Assert.Equal([1000L, 2000L, 2541L], rewards.Select(reward => reward.PriceCents));
+        Assert.Equal([0m, 0m, 15m], rewards.Select(reward => reward.DiscountPercent));
+    }
 
     [Fact]
     public async Task ChargesARetriedRedemptionOnce()

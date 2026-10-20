@@ -77,6 +77,7 @@ public static class HttpAdapter
             app.MapScalarApiReference();
         }
         app.MapMemberships();
+        app.MapRewards();
         app.MapPixWebhooks();
         app.MapReconciliation();
         app.MapHealth();

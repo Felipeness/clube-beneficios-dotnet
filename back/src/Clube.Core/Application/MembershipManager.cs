@@ -11,6 +11,9 @@ namespace Clube.Core.Application;
 // TimeProvider is a driven port too; the BCL already ships it as an abstraction with a fake for tests.
 public sealed class MembershipManager(IForStoringMemberships memberships, IForIdentifyingTheCaller caller, TimeProvider clock) : IForManagingMemberships
 {
+    public IReadOnlyList<RewardView> ListRewards() =>
+        [.. RewardCatalog.All.OrderBy(reward => reward.Id, StringComparer.Ordinal).Select(RewardView.From)];
+
     public async Task<Result<MembershipView>> SubscribeAsync(string cpf, CancellationToken ct)
     {
         if (!Cpf.Parse(cpf).TryGetValue(out var holder, out var invalidCpf)) return invalidCpf;

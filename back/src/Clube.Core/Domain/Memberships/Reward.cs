@@ -20,6 +20,8 @@ public static class RewardCatalog
         new("thermal-bottle", "Thermal bottle", Money.FromCents(2990), PromotionalDiscount: 0.15m),
     }.ToFrozenDictionary(reward => reward.Id);
 
+    public static IReadOnlyCollection<Reward> All => Rewards.Values;
+
     public static Result<Reward> Find(string id) =>
         Rewards.TryGetValue(id, out Reward? reward) ? reward : MembershipErrors.RewardNotFound;
 }
