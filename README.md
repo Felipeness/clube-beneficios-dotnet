@@ -2,6 +2,8 @@
 
 Clube de benefícios por assinatura em .NET 10 com **arquitetura hexagonal (ports and adapters)**: o membro assina com CPF, recebe 20 créditos por competência e troca créditos por recompensas.
 
+> Leitura complementar: [Guia de C# para tech lead](docs/guia-tech-lead-csharp.md), com o ecossistema, boas práticas, pegadinhas e a avaliação honesta da linguagem.
+
 ## A ideia em uma frase
 
 A aplicação mora dentro de um hexágono e não sabe que o mundo existe. Tudo que entra ou sai passa por uma **porta**, que é um contrato escrito pelo próprio hexágono, e cada tecnologia de fora se pluga numa porta através de um **adaptador**.
