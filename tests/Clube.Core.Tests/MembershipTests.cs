@@ -10,6 +10,9 @@ public class MembershipTests
     private static readonly Reward ThermalBottle = ResultAssert.Ok(RewardCatalog.Find("thermal-bottle"));
 
     private static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-10-20T15:00:00Z");
+    private static readonly PostingContext Context = At(Now);
+
+    private static PostingContext At(DateTimeOffset moment) => new(moment, new CallerContext(Actor.Anonymous, "corr-1"));
 
     private static Membership NewMembership() =>
         Membership.Subscribe(ResultAssert.Ok(Cpf.Parse("529.982.247-25")), Now);
@@ -22,7 +25,7 @@ public class MembershipTests
     {
         var membership = NewMembership();
 
-        var posting = ResultAssert.Ok(membership.CreditMonthlyAllowance(October, Now));
+        var posting = ResultAssert.Ok(membership.CreditMonthlyAllowance(October, Context));
 
         Assert.Equal(IdempotencyKey.ForAllowance(membership.Id, October), posting.Header.Key);
         Assert.Contains(posting.Entries, entry => entry.Account == membership.Account && entry.SignedCents == 2000);
@@ -43,7 +46,7 @@ public class MembershipTests
     {
         var membership = Membership.Subscribe(ResultAssert.Ok(Cpf.Parse("529.982.247-25")), DateTimeOffset.Parse(subscribedAt));
 
-        var result = membership.CreditMonthlyAllowance(ResultAssert.Ok(BillingPeriod.Parse(period)), DateTimeOffset.Parse(now));
+        var result = membership.CreditMonthlyAllowance(ResultAssert.Ok(BillingPeriod.Parse(period)), At(DateTimeOffset.Parse(now)));
 
         if (expectedErrorCode is null) ResultAssert.Ok(result);
         else Assert.Equal(expectedErrorCode, ResultAssert.Failed(result).Code);
@@ -54,7 +57,7 @@ public class MembershipTests
     {
         var membership = NewMembership();
 
-        var posting = ResultAssert.Ok(membership.Redeem(ThermalBottle, Money.FromCents(3000), RedemptionKey(membership), Now));
+        var posting = ResultAssert.Ok(membership.Redeem(ThermalBottle, Money.FromCents(3000), RedemptionKey(membership), Context));
 
         Assert.Equal(2541, ThermalBottle.Price.Cents);
         Assert.Contains(posting.Entries, entry => entry.Account == membership.Account && entry.SignedCents == -2541);
@@ -65,7 +68,7 @@ public class MembershipTests
     {
         var membership = NewMembership();
 
-        var error = ResultAssert.Failed(membership.Redeem(CinemaTicket, Money.FromCents(999), RedemptionKey(membership), Now));
+        var error = ResultAssert.Failed(membership.Redeem(CinemaTicket, Money.FromCents(999), RedemptionKey(membership), Context));
 
         Assert.Equal(MembershipErrors.InsufficientBalance, error);
         Assert.Equal(0, membership.LedgerVersion);
@@ -76,8 +79,8 @@ public class MembershipTests
     {
         var membership = NewMembership();
 
-        membership.CreditMonthlyAllowance(October, Now);
-        membership.Redeem(CinemaTicket, Money.FromCents(2000), RedemptionKey(membership), Now);
+        membership.CreditMonthlyAllowance(October, Context);
+        membership.Redeem(CinemaTicket, Money.FromCents(2000), RedemptionKey(membership), Context);
 
         Assert.Equal(2, membership.LedgerVersion);
     }

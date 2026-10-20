@@ -13,9 +13,9 @@ public sealed record LedgerEntry(LedgerAccount Account, Money Amount, EntryDirec
     public long SignedCents => Direction == EntryDirection.Credit ? Amount.Cents : -Amount.Cents;
 }
 
-public sealed record TransactionHeader(IdempotencyKey Key, string Fingerprint, string Description, DateTimeOffset PostedAt);
+public sealed record TransactionHeader(IdempotencyKey Key, string Fingerprint, string Description, DateTimeOffset PostedAt, CallerContext Caller);
 
-public sealed record StatementLine(Guid TransactionId, string Description, long AmountCents, DateTimeOffset PostedAt);
+public sealed record StatementLine(Guid TransactionId, string Description, long AmountCents, DateTimeOffset PostedAt, ActorKind ActorKind, string? ActorId);
 
 // Immutable once posted: a mistake is fixed with a reversing transaction, never by editing or deleting.
 public sealed class LedgerTransaction

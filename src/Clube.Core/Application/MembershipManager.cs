@@ -8,7 +8,7 @@ namespace Clube.Core.Application;
 
 // Implements the driving port by orchestrating the domain and calling out through driven ports.
 // TimeProvider is a driven port too; the BCL already ships it as an abstraction with a fake for tests.
-public sealed class MembershipManager(IForStoringMemberships memberships, TimeProvider clock) : IForManagingMemberships
+public sealed class MembershipManager(IForStoringMemberships memberships, IForIdentifyingTheCaller caller, TimeProvider clock) : IForManagingMemberships
 {
     private const int StatementPageSize = 50;
 
@@ -50,7 +50,7 @@ public sealed class MembershipManager(IForStoringMemberships memberships, TimePr
         if (membership is null) return MembershipErrors.NotFound;
         // Fast path for retries; the unique index on the key is what actually guarantees it.
         if (await memberships.FindPostedFingerprintAsync(IdempotencyKey.ForAllowance(id, billingPeriod), ct) is not null) return await ViewOfAsync(membership, ct);
-        if (!membership.CreditMonthlyAllowance(billingPeriod, clock.GetUtcNow()).TryGetValue(out var posting, out var rejected)) return rejected;
+        if (!membership.CreditMonthlyAllowance(billingPeriod, PostingContextNow()).TryGetValue(out var posting, out var rejected)) return rejected;
 
         return await PostAsync(membership, posting, ct);
     }
@@ -68,10 +68,12 @@ public sealed class MembershipManager(IForStoringMemberships memberships, TimePr
             return postedFingerprint == Membership.RedemptionFingerprint(reward) ? await ViewOfAsync(membership, ct) : LedgerErrors.IdempotencyKeyReused;
 
         var balance = await memberships.BalanceOfAsync(membership.Account, ct);
-        if (!membership.Redeem(reward, balance, key, clock.GetUtcNow()).TryGetValue(out var posting, out var rejected)) return rejected;
+        if (!membership.Redeem(reward, balance, key, PostingContextNow()).TryGetValue(out var posting, out var rejected)) return rejected;
 
         return await PostAsync(membership, posting, ct);
     }
+
+    private PostingContext PostingContextNow() => new(clock.GetUtcNow(), caller.Current);
 
     private async Task<Result<MembershipView>> PostAsync(Membership membership, LedgerTransaction posting, CancellationToken ct)
     {

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Clube.Core.Domain.Ledger;
 using Clube.Core.Ports.Driving;
 using Microsoft.Data.Sqlite;
 
@@ -29,6 +30,25 @@ public class MembershipApiTests
         Assert.Equal(1000, retriedRedemption.BalanceCents);
         Assert.NotNull(statement);
         Assert.Equal([-1000L, 2000L], statement.Lines.Select(line => line.AmountCents));
+    }
+
+    [Fact]
+    public async Task RecordsTheRequestTraceAsCorrelationAndTheActorOnTheStatement()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var created = await SubscribeAsync(client);
+        const string traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"/memberships/{created.Id}/allowance-credits") { Content = JsonContent.Create(new { period = "2026-10" }) };
+        request.Headers.Add("traceparent", $"00-{traceId}-00f067aa0ba902b7-01");
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(request)).StatusCode);
+        var statement = await client.GetFromJsonAsync<StatementView>($"/memberships/{created.Id}/statement");
+
+        Assert.Equal(traceId, factory.QueryScalar("SELECT CorrelationId FROM ledger_transactions"));
+        Assert.Equal("Anonymous", factory.QueryScalar("SELECT ActorKind FROM ledger_transactions"));
+        Assert.NotNull(statement);
+        Assert.Equal(ActorKind.Anonymous, Assert.Single(statement.Lines).ActorKind);
     }
 
     [Fact]

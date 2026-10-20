@@ -28,6 +28,13 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
         return command.ExecuteNonQuery();
     }
 
+    public string? QueryScalar(string sql)
+    {
+        using var command = keepAlive.CreateCommand();
+        command.CommandText = sql;
+        return command.ExecuteScalar()?.ToString();
+    }
+
     // The ledger rules depend on "now", so tests own the clock instead of reading the machine's.
     public FakeTimeProvider Clock { get; } = new(DateTimeOffset.Parse("2026-10-20T15:00:00Z"));
 

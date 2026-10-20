@@ -2,6 +2,7 @@ using Clube.Core.Application;
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Shared;
 using Clube.Core.Domain.Memberships;
+using Clube.Core.Ports.Driven;
 using Clube.Core.Ports.Driving;
 using Microsoft.Extensions.Time.Testing;
 
@@ -13,8 +14,11 @@ public class MembershipManagerTests
 {
     private const string Holder = "529.982.247-25";
 
-    private static IForManagingMemberships NewHexagon(TimeProvider? clock = null) =>
-        new MembershipManager(new InMemoryMembershipStore(), clock ?? new FakeTimeProvider(DateTimeOffset.Parse("2026-10-20T15:00:00Z")));
+    private static IForManagingMemberships NewHexagon(TimeProvider? clock = null, IForIdentifyingTheCaller? caller = null) =>
+        new MembershipManager(
+            new InMemoryMembershipStore(),
+            caller ?? new FakeCaller(Actor.Anonymous, "corr-1"),
+            clock ?? new FakeTimeProvider(DateTimeOffset.Parse("2026-10-20T15:00:00Z")));
 
     private static async Task<MembershipId> SubscribeAsync(IForManagingMemberships memberships) =>
         new(ResultAssert.Ok(await memberships.SubscribeAsync(Holder, default)).Id);
@@ -91,6 +95,35 @@ public class MembershipManagerTests
         Assert.Equal(expectedErrorCode, rejected.Code);
         Assert.Equal(ErrorKind.BusinessRule, rejected.Kind);
         Assert.Equal(0, balance);
+    }
+
+    [Fact]
+    public async Task StampsPostingsWithTheCallersActorAndCorrelation()
+    {
+        var store = new InMemoryMembershipStore();
+        var actor = Actor.Member(MembershipId.New());
+        var memberships = new MembershipManager(store, new FakeCaller(actor, "corr-77"), new FakeTimeProvider(DateTimeOffset.Parse("2026-10-20T15:00:00Z")));
+        var id = await SubscribeAsync(memberships);
+
+        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        var line = Assert.Single(ResultAssert.Ok(await memberships.GetStatementAsync(id, default)).Lines);
+
+        Assert.Equal(new CallerContext(actor, "corr-77"), Assert.Single(store.PostedTransactions).Header.Caller);
+        Assert.Equal(ActorKind.Member, line.ActorKind);
+        Assert.Equal(actor.Id, line.ActorId);
+    }
+
+    [Fact]
+    public async Task ShowsAnonymousCallersWithoutAnId()
+    {
+        var memberships = NewHexagon();
+        var id = await SubscribeAsync(memberships);
+
+        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        var line = Assert.Single(ResultAssert.Ok(await memberships.GetStatementAsync(id, default)).Lines);
+
+        Assert.Equal(ActorKind.Anonymous, line.ActorKind);
+        Assert.Null(line.ActorId);
     }
 
     [Fact]

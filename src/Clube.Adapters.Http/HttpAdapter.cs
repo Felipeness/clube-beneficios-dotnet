@@ -1,3 +1,4 @@
+using Clube.Core.Ports.Driven;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -13,6 +14,8 @@ public static class HttpAdapter
     {
         services.AddOpenApi();
         services.AddProblemDetails();
+        services.AddHttpContextAccessor();
+        services.AddScoped<IForIdentifyingTheCaller, HttpCaller>();
         return services.ConfigureHttpJsonOptions(options =>
         {
             // Turns a missing or null "cpf" into a 400 at the boundary instead of a NullReferenceException.

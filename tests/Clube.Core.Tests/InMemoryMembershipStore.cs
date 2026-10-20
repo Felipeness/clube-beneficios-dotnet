@@ -12,6 +12,8 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
     private readonly List<Membership> pendingMembers = [];
     private readonly List<LedgerTransaction> pendingTransactions = [];
 
+    public IReadOnlyList<LedgerTransaction> PostedTransactions => postedTransactions;
+
     public Task<Membership?> FindAsync(MembershipId id, CancellationToken ct) =>
         Task.FromResult(savedMembers.GetValueOrDefault(id));
 
@@ -41,7 +43,7 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
     private IEnumerable<StatementLine> EntriesOf(LedgerAccount account) =>
         postedTransactions.SelectMany(transaction => transaction.Entries
             .Where(entry => entry.Account == account)
-            .Select(entry => new StatementLine(transaction.Id, transaction.Header.Description, entry.SignedCents, transaction.Header.PostedAt)));
+            .Select(entry => new StatementLine(transaction.Id, transaction.Header.Description, entry.SignedCents, transaction.Header.PostedAt, transaction.Header.Caller.Actor.Kind, transaction.Header.Caller.Actor.Id)));
 
     private bool HolderTaken() =>
         pendingMembers.Any(candidate => savedMembers.Values.Any(existing => existing.Holder == candidate.Holder));

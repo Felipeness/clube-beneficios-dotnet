@@ -42,23 +42,23 @@ public sealed class Membership
     public static string AllowanceFingerprint(MembershipId id, BillingPeriod period) => IdempotencyKey.ForAllowance(id, period).Value;
 
     // Only periods from the subscription month up to the current one can be credited: no advancing the allowance.
-    public Result<LedgerTransaction> CreditMonthlyAllowance(BillingPeriod period, DateTimeOffset now)
+    public Result<LedgerTransaction> CreditMonthlyAllowance(BillingPeriod period, PostingContext context)
     {
-        if (period.Start > BillingPeriod.At(now).Start) return MembershipErrors.FuturePeriod;
+        if (period.Start > BillingPeriod.At(context.At).Start) return MembershipErrors.FuturePeriod;
         if (period.Start < BillingPeriod.At(SubscribedAt).Start) return MembershipErrors.PeriodBeforeSubscription;
 
         return PostTransfer(
             LedgerAccount.AllowanceFunding,
             Account,
             MonthlyAllowance,
-            new TransactionHeader(IdempotencyKey.ForAllowance(Id, period), AllowanceFingerprint(Id, period), $"Monthly allowance {period}", now));
+            new TransactionHeader(IdempotencyKey.ForAllowance(Id, period), AllowanceFingerprint(Id, period), $"Monthly allowance {period}", context.At, context.Caller));
     }
 
-    public Result<LedgerTransaction> Redeem(Reward reward, Money balance, IdempotencyKey key, DateTimeOffset now)
+    public Result<LedgerTransaction> Redeem(Reward reward, Money balance, IdempotencyKey key, PostingContext context)
     {
         if (balance < reward.Price) return MembershipErrors.InsufficientBalance;
 
-        return PostTransfer(Account, LedgerAccount.Redemptions, reward.Price, new TransactionHeader(key, RedemptionFingerprint(reward), $"Redemption {reward.Id}", now));
+        return PostTransfer(Account, LedgerAccount.Redemptions, reward.Price, new TransactionHeader(key, RedemptionFingerprint(reward), $"Redemption {reward.Id}", context.At, context.Caller));
     }
 
     private Result<LedgerTransaction> PostTransfer(LedgerAccount from, LedgerAccount to, Money amount, TransactionHeader header)

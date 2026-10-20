@@ -12,6 +12,9 @@ internal sealed class LedgerTransactionRow
     public required string Fingerprint { get; init; }
     public required string Description { get; init; }
     public DateTimeOffset PostedAt { get; init; }
+    public required string ActorKind { get; init; }
+    public string? ActorId { get; init; }
+    public required string CorrelationId { get; init; }
     public List<LedgerEntryRow> Entries { get; init; } = [];
 }
 
@@ -31,7 +34,11 @@ internal sealed class LedgerTransactionConfiguration : IEntityTypeConfiguration<
         builder.HasKey(transaction => transaction.Id);
         builder.Property(transaction => transaction.IdempotencyKey).HasMaxLength(160);
         builder.Property(transaction => transaction.Fingerprint).HasMaxLength(160);
+        builder.Property(transaction => transaction.ActorKind).HasMaxLength(32);
+        builder.Property(transaction => transaction.ActorId).HasMaxLength(64);
+        builder.Property(transaction => transaction.CorrelationId).HasMaxLength(64);
         builder.HasIndex(transaction => transaction.IdempotencyKey).IsUnique();
+        builder.HasIndex(transaction => transaction.CorrelationId);
         builder.HasMany(transaction => transaction.Entries).WithOne().HasForeignKey(entry => entry.TransactionId);
     }
 }
