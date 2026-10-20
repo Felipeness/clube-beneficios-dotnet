@@ -6,7 +6,7 @@ using Clube.Core.Ports.Driving;
 // Configurator: the only place that knows every piece. It plugs adapters into the hexagon's ports.
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("Clube")
+string connectionString = builder.Configuration.GetConnectionString("Clube")
     ?? throw new InvalidOperationException("Missing connection string 'Clube'.");
 
 builder.Services.AddSingleton(TimeProvider.System);

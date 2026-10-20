@@ -16,7 +16,7 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
 
     public Task<bool> TrySaveChangesAsync(CancellationToken ct)
     {
-        var holderTaken = pending.Any(candidate => saved.Values.Any(existing => existing.Holder == candidate.Holder));
+        bool holderTaken = pending.Any(candidate => saved.Values.Any(existing => existing.Holder == candidate.Holder));
         if (!holderTaken) pending.ForEach(membership => saved[membership.Id] = membership);
 
         pending.Clear();

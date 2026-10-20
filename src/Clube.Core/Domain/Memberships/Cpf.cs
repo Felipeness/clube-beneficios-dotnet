@@ -14,7 +14,7 @@ public sealed record Cpf
 
     public static Result<Cpf> Parse(string raw)
     {
-        var digits = raw.Replace(".", "").Replace("-", "");
+        string digits = raw.Replace(".", "").Replace("-", "");
         if (!IsWellFormed(digits)) return MembershipErrors.InvalidCpf;
         if (!HasValidCheckDigits(digits)) return MembershipErrors.InvalidCpf;
 
@@ -33,9 +33,9 @@ public sealed record Cpf
 
     private static int CheckDigit(string prefix)
     {
-        var firstWeight = prefix.Length + 1;
-        var sum = prefix.Select((digit, index) => (digit - '0') * (firstWeight - index)).Sum();
-        var remainder = sum % 11;
+        int firstWeight = prefix.Length + 1;
+        int sum = prefix.Select((digit, index) => (digit - '0') * (firstWeight - index)).Sum();
+        int remainder = sum % 11;
         return remainder < 2 ? 0 : 11 - remainder;
     }
 }
