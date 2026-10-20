@@ -16,9 +16,10 @@ public class PixWebhookTests
         return created.Id;
     }
 
-    private static async Task<long> BalanceAsync(HttpClient client, Guid membershipId)
+    private static async Task<long> BalanceAsync(ClubeApiFactory factory, Guid membershipId)
     {
-        var view = await client.GetFromJsonAsync<MembershipView>($"/memberships/{membershipId}");
+        using var member = factory.CreateClientAsMember(membershipId);
+        var view = await member.GetFromJsonAsync<MembershipView>($"/memberships/{membershipId}");
         Assert.NotNull(view);
         return view.BalanceCents;
     }
@@ -34,7 +35,7 @@ public class PixWebhookTests
         string result = await PixWebhook.ResultOfAsync(await PixWebhook.DeliverAsync(factory, client, PixWebhook.Received(membershipId, "2026-10", endToEndId)));
 
         Assert.Equal("credited", result);
-        Assert.Equal(2000, await BalanceAsync(client, membershipId));
+        Assert.Equal(2000, await BalanceAsync(factory, membershipId));
         Assert.Equal(endToEndId, factory.QueryScalar("SELECT ExternalReference FROM ledger_transactions"));
     }
 
@@ -62,7 +63,7 @@ public class PixWebhookTests
         var response = await PixWebhook.SendAsync(client, body, sendsTimestamp ? timestamp : null, signature);
 
         Assert.True(response.StatusCode == HttpStatusCode.Unauthorized, scenario);
-        Assert.Equal(0, await BalanceAsync(client, membershipId));
+        Assert.Equal(0, await BalanceAsync(factory, membershipId));
     }
 
     [Fact]
@@ -107,7 +108,7 @@ public class PixWebhookTests
 
         Assert.Equal("credited", first);
         Assert.Equal("already_credited", again);
-        Assert.Equal(2000, await BalanceAsync(client, membershipId));
+        Assert.Equal(2000, await BalanceAsync(factory, membershipId));
     }
 
     [Fact]
@@ -121,7 +122,7 @@ public class PixWebhookTests
         string result = await PixWebhook.ResultOfAsync(await PixWebhook.DeliverAsync(factory, client, PixWebhook.Received(membershipId, "2026-10")));
 
         Assert.Equal("duplicate_payment", result);
-        Assert.Equal(2000, await BalanceAsync(client, membershipId));
+        Assert.Equal(2000, await BalanceAsync(factory, membershipId));
     }
 
     [Theory]
@@ -137,7 +138,7 @@ public class PixWebhookTests
         var response = await PixWebhook.DeliverAsync(factory, client, PixWebhook.Received(membershipId, period, amountCents: amountCents));
 
         Assert.Equal(expected, response.StatusCode);
-        Assert.Equal(0, await BalanceAsync(client, membershipId));
+        Assert.Equal(0, await BalanceAsync(factory, membershipId));
     }
 
     [Fact]
@@ -184,7 +185,7 @@ public class PixWebhookTests
 
         Assert.Equal("refunded", first);
         Assert.Equal("already_refunded", again);
-        Assert.Equal(0, await BalanceAsync(client, membershipId));
+        Assert.Equal(0, await BalanceAsync(factory, membershipId));
         Assert.Equal("2", factory.QueryScalar("SELECT COUNT(*) FROM ledger_transactions"));
     }
 
@@ -211,7 +212,7 @@ public class PixWebhookTests
         var response = await client.PostAsJsonAsync($"/memberships/{membershipId}/allowance-credits", new { period = "2026-10" });
 
         Assert.Contains(response.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed });
-        Assert.Equal(0, await BalanceAsync(client, membershipId));
+        Assert.Equal(0, await BalanceAsync(factory, membershipId));
     }
 
     [Fact]

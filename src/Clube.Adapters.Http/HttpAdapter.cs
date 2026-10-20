@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using Clube.Core.Ports.Driven;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
@@ -13,7 +15,7 @@ public static class HttpAdapter
 {
     public static IServiceCollection AddHttpAdapter(this IServiceCollection services)
     {
-        services.AddOpenApi();
+        services.AddOpenApi(options => options.AddBearerSecurity());
         services.AddProblemDetails();
         services.AddHttpContextAccessor();
         services.AddScoped<IForIdentifyingTheCaller, HttpCaller>();
@@ -22,6 +24,7 @@ public static class HttpAdapter
             .BindConfiguration(PspOptions.Section)
             .Validate(psp => psp.WebhookSecret.Length >= PspOptions.MinimumSecretLength, $"Psp:WebhookSecret must have at least {PspOptions.MinimumSecretLength} characters.")
             .ValidateOnStart();
+        services.AddBearerAuthentication();
         services.AddSingleton<PixSignature>();
         services.AddScoped<PixWebhookReceiver>();
         return services.ConfigureHttpJsonOptions(options =>
@@ -34,6 +37,25 @@ public static class HttpAdapter
         });
     }
 
+    // No configuration in code: AddJwtBearer binds Authentication:Schemes:Bearer (what dotnet user-jwts writes), so production
+    // points at a real identity provider (Authority, ValidIssuer, ValidAudiences) through configuration alone.
+    private static void AddBearerAuthentication(this IServiceCollection services)
+    {
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
+        {
+            options.MapInboundClaims = false;
+            options.TokenValidationParameters.RoleClaimType = ClubeClaims.Role;
+            options.TokenValidationParameters.NameClaimType = ClubeClaims.Subject;
+        });
+        // Same stance as the webhook secret: outside Development a host without a trusted issuer does not boot.
+        // Development may run without one (every protected route answers 401) until dotnet user-jwts is set up.
+        services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+            .Validate<IHostEnvironment>((options, environment) => environment.IsDevelopment() || BearerSettings.AreComplete(options), BearerSettings.Missing)
+            .ValidateOnStart();
+        services.AddSingleton<IAuthorizationHandler, MembershipAccessHandler>();
+        services.AddAuthorizationBuilder().AddMembershipPolicies();
+    }
+
     public static WebApplication UseHttpAdapter(this WebApplication app)
     {
         // Development throws BadHttpRequestException on malformed bodies; keep its 400 instead of a generic 500.
@@ -44,6 +66,10 @@ public static class HttpAdapter
                 : StatusCodes.Status500InternalServerError,
         });
         app.UseStatusCodePages();
+        // No fallback policy: each route states what it needs, so the webhook (authenticated by its HMAC) and the
+        // sign-up stay reachable without a token.
+        app.UseAuthentication();
+        app.UseAuthorization();
         if (app.Environment.IsDevelopment())
         {
             app.MapOpenApi();

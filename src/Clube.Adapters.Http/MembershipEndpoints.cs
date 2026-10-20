@@ -36,21 +36,29 @@ internal static class MembershipEndpoints
 
         // ProblemHttpResult carries no status metadata, so error responses must be declared
         // explicitly or the OpenAPI document advertises only the success path.
+        // Sign-up stays open: the caller has no membership yet, so there is no member token it could present.
         memberships.MapPost("/", Subscribe)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status409Conflict);
-        memberships.MapGet("/{id:guid}", Get)
+
+        var membership = memberships.MapGroup("/{id:guid}")
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden);
+        membership.MapGet("", Get)
+            .RequireAuthorization(MembershipPolicies.ReadMembership)
             .ProducesProblem(StatusCodes.Status404NotFound);
-        memberships.MapGet("/{id:guid}/statement", GetStatement)
+        membership.MapGet("/statement", GetStatement)
+            .RequireAuthorization(MembershipPolicies.ReadMembership)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
-        memberships.MapPost("/{id:guid}/redemptions", Redeem)
+        membership.MapPost("/redemptions", Redeem)
+            .RequireAuthorization(MembershipPolicies.ActAsMember)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
-        // Anonymous for now: once callers authenticate, only operators may reverse a posting.
-        memberships.MapPost("/{id:guid}/transactions/{transactionId:guid}/reversal", Reverse)
+        membership.MapPost("/transactions/{transactionId:guid}/reversal", Reverse)
+            .RequireAuthorization(MembershipPolicies.Operator)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);

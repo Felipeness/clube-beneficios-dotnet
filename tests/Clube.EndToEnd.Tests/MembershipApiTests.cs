@@ -22,13 +22,14 @@ public class MembershipApiTests
         await using var factory = new ClubeApiFactory();
         var client = factory.CreateClient();
         var created = await SubscribeAsync(client);
+        using var member = factory.CreateClientAsMember(created.Id);
         string membership = $"/memberships/{created.Id}";
 
         await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
-        var credited = await client.GetFromJsonAsync<MembershipView>(membership, Json);
-        await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
-        var retriedRedemption = await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
-        var statement = await client.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
+        var credited = await member.GetFromJsonAsync<MembershipView>(membership, Json);
+        await PostAsync<MembershipView>(member, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+        var retriedRedemption = await PostAsync<MembershipView>(member, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+        var statement = await member.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
 
         Assert.Equal("***.982.247-**", created.Holder);
         Assert.NotNull(credited);
@@ -48,7 +49,8 @@ public class MembershipApiTests
 
         client.DefaultRequestHeaders.Add("traceparent", $"00-{traceId}-00f067aa0ba902b7-01");
         await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
-        var statement = await client.GetFromJsonAsync<StatementResponse>($"/memberships/{created.Id}/statement", Json);
+        using var member = factory.CreateClientAsMember(created.Id);
+        var statement = await member.GetFromJsonAsync<StatementResponse>($"/memberships/{created.Id}/statement", Json);
 
         Assert.Equal(traceId, factory.QueryScalar("SELECT CorrelationId FROM ledger_transactions"));
         Assert.Equal("PaymentProvider", factory.QueryScalar("SELECT ActorKind FROM ledger_transactions"));
@@ -64,13 +66,14 @@ public class MembershipApiTests
         await using var factory = new ClubeApiFactory();
         var client = factory.CreateClient();
         var created = await SubscribeAsync(client);
+        using var member = factory.CreateClientAsMember(created.Id);
         string membership = $"/memberships/{created.Id}";
         await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
-        await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+        await PostAsync<MembershipView>(member, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{membership}/redemptions") { Content = JsonContent.Create(new { rewardId = "thermal-bottle" }) };
         request.Headers.Add("Idempotency-Key", "order-1");
-        var response = await client.SendAsync(request);
+        var response = await member.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
     }
@@ -93,8 +96,9 @@ public class MembershipApiTests
         await using var factory = new ClubeApiFactory();
         var client = factory.CreateClient();
         var membership = await SubscribeAsync(client);
+        using var member = factory.CreateClientAsMember(membership.Id);
 
-        var response = await client.PostAsJsonAsync($"/memberships/{membership.Id}/redemptions", new { rewardId = "cinema-ticket" });
+        var response = await member.PostAsJsonAsync($"/memberships/{membership.Id}/redemptions", new { rewardId = "cinema-ticket" });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -104,7 +108,6 @@ public class MembershipApiTests
         { "/memberships", new { cpf = "111.111.111-11" }, HttpStatusCode.BadRequest },
         { "/memberships", new { cpf = (string?)null }, HttpStatusCode.BadRequest },
         { "/memberships", new { }, HttpStatusCode.BadRequest },
-        { $"/memberships/{Guid.Empty}/redemptions", new { rewardId = "cinema-ticket" }, HttpStatusCode.NotFound },
         { "{membership}/redemptions", new { rewardId = "yacht" }, HttpStatusCode.NotFound },
         { "{membership}/redemptions", new { rewardId = "cinema-ticket" }, HttpStatusCode.UnprocessableEntity },
     };
@@ -116,8 +119,9 @@ public class MembershipApiTests
         await using var factory = new ClubeApiFactory();
         var client = factory.CreateClient();
         var membership = await SubscribeAsync(client);
+        using var member = factory.CreateClientAsMember(membership.Id);
 
-        var response = await SendAsync(client, path.Replace("{membership}", $"/memberships/{membership.Id}"), body, "any-key");
+        var response = await SendAsync(path.StartsWith("{membership}", StringComparison.Ordinal) ? member : client, path.Replace("{membership}", $"/memberships/{membership.Id}"), body, "any-key");
 
         Assert.Equal(expected, response.StatusCode);
     }
@@ -159,13 +163,14 @@ public class MembershipApiTests
         var client = factory.CreateClient();
         var created = await SubscribeAsync(client);
         await CreditMonthsAsync(factory, client, created.Id, 3);
+        using var member = factory.CreateClientAsMember(created.Id);
         string statementPath = $"/memberships/{created.Id}/statement";
 
         var walked = new List<Guid>();
         string? cursor = null;
         do
         {
-            var page = await client.GetFromJsonAsync<StatementResponse>($"{statementPath}?limit=1" + (cursor is null ? "" : $"&cursor={cursor}"), Json);
+            var page = await member.GetFromJsonAsync<StatementResponse>($"{statementPath}?limit=1" + (cursor is null ? "" : $"&cursor={cursor}"), Json);
             Assert.NotNull(page);
             walked.Add(Assert.Single(page.Lines).TransactionId);
             Assert.Equal(6000, page.BalanceCents);
@@ -186,8 +191,9 @@ public class MembershipApiTests
         await using var factory = new ClubeApiFactory();
         var client = factory.CreateClient();
         var created = await SubscribeAsync(client);
+        using var member = factory.CreateClientAsMember(created.Id);
 
-        var response = await client.GetAsync($"/memberships/{created.Id}/statement{query}");
+        var response = await member.GetAsync($"/memberships/{created.Id}/statement{query}");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -214,16 +220,18 @@ public class MembershipApiTests
         await using var factory = new ClubeApiFactory();
         var client = factory.CreateClient();
         var created = await SubscribeAsync(client);
+        using var member = factory.CreateClientAsMember(created.Id);
+        using var staff = factory.CreateClientAsOperator();
         string membership = $"/memberships/{created.Id}";
         await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
-        await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
-        var before = await client.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
+        await PostAsync<MembershipView>(member, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+        var before = await member.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
         Assert.NotNull(before);
         Guid redemption = before.Lines.Single(line => line.AmountCents == -1000).TransactionId;
 
-        var reversed = await PostAsync<MembershipView>(client, $"{membership}/transactions/{redemption}/reversal", new { });
-        var again = await PostAsync<MembershipView>(client, $"{membership}/transactions/{redemption}/reversal", new { });
-        var after = await client.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
+        var reversed = await PostAsync<MembershipView>(staff, $"{membership}/transactions/{redemption}/reversal", new { });
+        var again = await PostAsync<MembershipView>(staff, $"{membership}/transactions/{redemption}/reversal", new { });
+        var after = await member.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
 
         Assert.Equal(2000, reversed.BalanceCents);
         Assert.Equal(2000, again.BalanceCents);
@@ -240,7 +248,8 @@ public class MembershipApiTests
         var created = await SubscribeAsync(client);
         string path = $"/memberships/{created.Id}/transactions/{Guid.NewGuid()}/reversal";
 
-        var response = await SendAsync(client, path, new { }, idempotencyKey: null);
+        using var staff = factory.CreateClientAsOperator();
+        var response = await SendAsync(staff, path, new { }, idempotencyKey: null);
         using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json"));
         JsonElement responses = document.RootElement
             .GetProperty("paths").GetProperty("/memberships/{id}/transactions/{transactionId}/reversal").GetProperty("post").GetProperty("responses");

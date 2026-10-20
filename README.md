@@ -96,9 +96,18 @@ O domínio fica numa pasta dentro do `Core`, não num projeto separado: no hexag
   - Outros erros (membro inexistente, competência fora da janela, payload fora do contrato) continuam 4xx com WARN, porque são defeito de integração e não algo que o PSP resolva sozinho. Bancos SQLite antigos precisam ser recriados para ganhar a coluna `ExternalReference`.
 - **Janela do crédito:** só dá pra creditar competências entre o mês da assinatura e o mês atual, inclusive; fora disso a resposta é 422 (`membership.future_period` ou `membership.period_before_subscription`). Os meses são calculados em `America/Sao_Paulo`, num lugar só (`BillingPeriod.At`), e não em UTC: às 21h30 de 31/10 em São Paulo ainda é outubro. O relógio vem do `TimeProvider`, que os testes substituem por um `FakeTimeProvider`. O retry de uma competência já creditada continua respondendo 200 sem reavaliar a janela.
 - **Concorrência:** cada lançamento incrementa `Membership.LedgerVersion`, que é concurrency token. Dois resgates que leram o mesmo saldo não conseguem gastá-lo duas vezes, e o segundo recebe 409.
-- **Auditoria (quem e qual requisição):** toda transação guarda um `Actor` (`Kind` + `Id` opcional) e um `CorrelationId`, em colunas de `ledger_transactions` (e no store em memória). `Actor` é um tipo fechado com construtor privado e fábricas (`Anonymous`, `Member(id)`), então "anônimo com id" não existe; um novo tipo de chamador (webhook do PSP, job) é um valor no enum `ActorKind` mais uma fábrica. O núcleo não recebe isso por parâmetro: pergunta à porta de saída `IForIdentifyingTheCaller.Current`, que o adaptador HTTP implementa a partir do request (anônimo, exceto no webhook assinado do PSP; correlação = trace id da `Activity`, que respeita o header `traceparent`, ou `TraceIdentifier`). Nos testes do núcleo entra um fake. O extrato mostra `actorKind` e `actorId` (id estável, nunca CPF). O adaptador SQLite loga a postagem (`ILogger` com message template: transactionId, chave de idempotência, kind do ator, correlationId) só depois do commit. Bancos SQLite antigos precisam ser recriados para ganhar as colunas.
-- **Estorno:** `POST /memberships/{id}/transactions/{transactionId}/reversal` posta uma transação nova com os lançamentos espelhados (débito vira crédito e vice-versa, mesmo valor), descrição `Reversal of <original>` e `ReversesTransactionId` apontando pro original, que continua no extrato (append-only). A chave de idempotência é determinística, `reversal:{originalId}`: estornar duas vezes responde com o estado atual e não estorna em dobro, e estornar um estorno é 422 (`ledger.reversal_of_reversal`). Transação inexistente ou de outro membro é 404. Passa pelo mesmo `LedgerVersion` e pela mesma auditoria (ator e correlação). **Saldo negativo é permitido:** estornar um crédito já gasto (caso da devolução de Pix) deixa o membro devendo, e `Redeem` segue recusando resgates até o saldo cobrir o preço. Estornar um resgate devolve o valor. **Limite conhecido:** só estorno total, não há estorno parcial. A rota está anônima por enquanto e deve ser restrita a operadores quando houver autenticação. Bancos SQLite antigos precisam ser recriados para ganhar a coluna `ReversesTransactionId`.
+- **Auditoria (quem e qual requisição):** toda transação guarda um `Actor` (`Kind` + `Id` opcional) e um `CorrelationId`, em colunas de `ledger_transactions` (e no store em memória). `Actor` é um tipo fechado com construtor privado e fábricas (`Anonymous`, `Member(id)`, `Operator(sub)`, `PixProvider`), então "anônimo com id" não existe; um novo tipo de chamador (webhook do PSP, job) é um valor no enum `ActorKind` mais uma fábrica. O núcleo não recebe isso por parâmetro: pergunta à porta de saída `IForIdentifyingTheCaller.Current`, que o adaptador HTTP implementa a partir do request (PSP no webhook assinado, `Operator(sub)` ou `Member(membership_id)` a partir do JWT validado, anônimo no resto; nunca de header ou corpo livre; correlação = trace id da `Activity`, que respeita o header `traceparent`, ou `TraceIdentifier`). Nos testes do núcleo entra um fake. O extrato mostra `actorKind` e `actorId` (id estável, nunca CPF). O adaptador SQLite loga a postagem (`ILogger` com message template: transactionId, chave de idempotência, kind do ator, correlationId) só depois do commit. Bancos SQLite antigos precisam ser recriados para ganhar as colunas.
+- **Estorno:** `POST /memberships/{id}/transactions/{transactionId}/reversal` posta uma transação nova com os lançamentos espelhados (débito vira crédito e vice-versa, mesmo valor), descrição `Reversal of <original>` e `ReversesTransactionId` apontando pro original, que continua no extrato (append-only). A chave de idempotência é determinística, `reversal:{originalId}`: estornar duas vezes responde com o estado atual e não estorna em dobro, e estornar um estorno é 422 (`ledger.reversal_of_reversal`). Transação inexistente ou de outro membro é 404. Passa pelo mesmo `LedgerVersion` e pela mesma auditoria (ator e correlação). **Saldo negativo é permitido:** estornar um crédito já gasto (caso da devolução de Pix) deixa o membro devendo, e `Redeem` segue recusando resgates até o saldo cobrir o preço. Estornar um resgate devolve o valor. **Limite conhecido:** só estorno total, não há estorno parcial. Só operador chega na rota (policy HTTP). Bancos SQLite antigos precisam ser recriados para ganhar a coluna `ReversesTransactionId`.
 - **Extrato paginado:** `GET /memberships/{id}/statement?limit=&cursor=` devolve os lançamentos do mais novo para o mais antigo, e `nextCursor` (null na última página). Paginação por keyset sobre o id da entrada do ledger, não por offset: lançamento novo entre duas páginas não repete nem pula linha (ele só aparece ao recomeçar sem cursor). O adaptador busca `limit + 1` linhas para saber se há próxima página, sem COUNT. `limit` vai de 1 a 100 (padrão 50); fora disso é 400, não clamp, para o cliente não achar que recebeu o que pediu. O cursor é opaco para o cliente (base64url da posição): o Core só conhece `StatementCursor` e `StatementPage`, a codificação fica no adaptador HTTP; cursor inválido é 400. `balanceCents` continua sendo o saldo total, não o da página.
+
+### Autenticação e autorização
+
+- **JWT Bearer, configurado só por configuração:** `AddJwtBearer` lê `Authentication:Schemes:Bearer` (o que o `dotnet user-jwts` escreve). Em produção, aponte pra um IdP real com `Authority`, `ValidIssuer` e `ValidAudiences` (ex.: `Authentication__Schemes__Bearer__Authority`). Fora de Development o host **não sobe** sem issuer, audience e uma fonte de chave (`Authority` ou `SigningKeys`), mesmo critério do segredo do webhook: sem issuer ou audience o handler simplesmente pula a checagem, então exigir só a chave não basta. O mapeamento de claims do .NET está desligado: valem os nomes crus `sub`, `role` e `membership_id`.
+- **Dois papéis, como policies:** membro (claim `membership_id`) lê e resgata só no próprio `{id}`; operador (role `operator` com `sub`) lê qualquer membro e é o único que estorna. O operador não resgata pelo membro: gastar saldo é ato do titular. A regra é um requirement resource-based (`MembershipAccessHandler`) que compara o `{id}` da rota com o token, não um `if` em cada handler.
+- **403, não 404, pra membro olhando outro membro:** a policy decide antes de qualquer consulta ao banco, então qualquer id que não seja o do token responde 403, exista ou não. Não vaza existência (os ids já são GUIDs aleatórios) e o cliente distingue "não é seu" de "não existe". Sem token, token expirado ou assinado com outra chave é 401.
+- **`POST /memberships` continua aberto:** quem assina ainda não tem `membership_id`, então não há token de membro pra exigir. Quando houver login no IdP, a adesão pode passar a exigir um token sem `membership_id`; o 409 de CPF repetido continua permitindo enumerar CPFs e merece rate limit (fora deste escopo).
+- **Sem fallback policy:** cada rota diz o que exige. O `POST /webhooks/pix` segue sem JWT (a autenticidade é a assinatura HMAC), e um header `Authorization` qualquer nele não bloqueia nem muda o ator.
+- **OpenAPI:** o documento declara o esquema `Bearer` (o Scalar mostra o campo de token) e as rotas protegidas declaram `security`, 401 e 403.
 
 ### Outras
 
@@ -113,14 +122,23 @@ dotnet test
 dotnet run --project src/Clube.Host
 ```
 
-| Método | Rota | Corpo / header |
-|---|---|---|
-| POST | `/memberships` | `{ "cpf": "529.982.247-25" }` |
-| GET | `/memberships/{id}` | |
-| GET | `/memberships/{id}/statement` | query `limit` (1 a 100) e `cursor` |
-| POST | `/memberships/{id}/redemptions` | `{ "rewardId": "cinema-ticket" }` + header `Idempotency-Key: <chave do cliente>` |
-| POST | `/memberships/{id}/transactions/{transactionId}/reversal` | sem corpo (estorno total) |
-| POST | `/webhooks/pix` | evento `pix.received` ou `pix.refunded` + headers `X-Pix-Timestamp` e `X-Pix-Signature` |
+| Método | Rota | Quem | Corpo / header |
+|---|---|---|---|
+| POST | `/memberships` | aberto | `{ "cpf": "529.982.247-25" }` |
+| GET | `/memberships/{id}` | o próprio membro ou operador | |
+| GET | `/memberships/{id}/statement` | o próprio membro ou operador | query `limit` (1 a 100) e `cursor` |
+| POST | `/memberships/{id}/redemptions` | o próprio membro | `{ "rewardId": "cinema-ticket" }` + header `Idempotency-Key: <chave do cliente>` |
+| POST | `/memberships/{id}/transactions/{transactionId}/reversal` | operador | sem corpo (estorno total) |
+| POST | `/webhooks/pix` | PSP (assinatura HMAC, sem JWT) | evento `pix.received` ou `pix.refunded` + headers `X-Pix-Timestamp` e `X-Pix-Signature` |
+
+Tokens de desenvolvimento saem do `dotnet user-jwts` (o issuer `dotnet-user-jwts` e as audiences locais já estão no `appsettings.Development.json`; a chave fica nos user secrets da máquina):
+
+```bash
+dotnet user-jwts create --project src/Clube.Host --claim membership_id=<id da adesão>   # membro
+dotnet user-jwts create --project src/Clube.Host --role operator                        # operador
+```
+
+No Scalar (`/scalar` em Development), cole o token no campo de autenticação Bearer; com curl, `-H "Authorization: Bearer <token>"`.
 
 O Scalar não assina requisições, então pra creditar à mão use o script, que monta, assina com o segredo de Development e envia um `pix.received` pra `http://localhost:5135`:
 

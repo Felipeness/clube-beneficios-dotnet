@@ -8,6 +8,7 @@ public enum ActorKind
     Anonymous,
     Member,
     PaymentProvider,
+    Operator,
 }
 
 // Who triggered a posting. Built only through the factories, so "anonymous with an id" cannot exist.
@@ -28,4 +29,11 @@ public sealed record Actor
     }
 
     public static Actor Member(MembershipId id) => new(ActorKind.Member, id.ToString());
+
+    // The subject is the identity provider's stable user id, so an audit leads back to one person.
+    public static Actor Operator(string subject)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(subject);
+        return new(ActorKind.Operator, subject);
+    }
 }

@@ -11,10 +11,12 @@ public class ReversalTests
 {
     private static readonly PostingContext Context = new(DateTimeOffset.Parse("2026-10-20T15:00:00Z"), new CallerContext(Actor.Anonymous, "corr-1"));
 
-    private static IForManagingMemberships NewHexagon() =>
+    private static readonly Actor Staff = Actor.Operator("operator-1");
+
+    private static IForManagingMemberships NewHexagon(InMemoryMembershipStore? store = null, Actor? actor = null) =>
         new MembershipManager(
-            new InMemoryMembershipStore(),
-            new FakeCaller(Actor.Anonymous, "corr-1"),
+            store ?? new InMemoryMembershipStore(),
+            new FakeCaller(actor ?? Staff, "corr-1"),
             new FakeTimeProvider(Context.At));
 
     private static async Task<MembershipId> SubscribeAsync(IForManagingMemberships memberships, string cpf = "529.982.247-25") =>
@@ -121,5 +123,18 @@ public class ReversalTests
         Assert.Equal(MembershipErrors.TransactionNotFound, foreign);
         Assert.Equal(MembershipErrors.TransactionNotFound, unknown);
         Assert.Equal(2000, ResultAssert.Ok(await memberships.GetAsync(owner, default)).BalanceCents);
+    }
+
+    [Fact]
+    public async Task StampsTheOperatorOnTheReversal()
+    {
+        var store = new InMemoryMembershipStore();
+        var memberships = NewHexagon(store);
+        var id = await SubscribeAsync(memberships);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
+
+        ResultAssert.Ok(await memberships.ReverseTransactionAsync(id, await TransactionIdAsync(memberships, id, "Monthly allowance 2026-10"), default));
+
+        Assert.Equal(Staff, store.PostedTransactions.Last().Header.Caller.Actor);
     }
 }
