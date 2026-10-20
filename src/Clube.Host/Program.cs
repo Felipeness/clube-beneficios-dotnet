@@ -1,4 +1,5 @@
 using Clube.Adapters.Http;
+using Clube.Adapters.Jobs;
 using Clube.Adapters.Partners;
 using Clube.Adapters.Sqlite;
 using Clube.Core.Application;
@@ -13,9 +14,11 @@ string connectionString = builder.Configuration.GetConnectionString("Clube")
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IForManagingMemberships, MembershipManager>();
 builder.Services.AddScoped<IForRelayingTheOutbox, OutboxDispatcher>();
+builder.Services.AddScoped<IForExpiringCredits, CreditExpiryRunner>();
 builder.Services.AddSqliteAdapter(connectionString);
 builder.Services.AddHttpAdapter();
 builder.Services.AddPartnersAdapter();
+builder.Services.AddJobsAdapter();
 
 var app = builder.Build();
 

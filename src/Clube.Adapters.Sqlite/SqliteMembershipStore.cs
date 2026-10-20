@@ -62,6 +62,30 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
         Money.FromCents(Math.Abs(row.SignedCents)),
         row.SignedCents < 0 ? EntryDirection.Debit : EntryDirection.Credit);
 
+    // Raw SQL because the id is a converted value type with no comparison EF can translate. The column is TEXT, so WHERE and
+    // ORDER BY agree on text order, which is all a keyset needs; Guid.Empty sorts before every real id and opens the first page.
+    public async Task<IReadOnlyList<MembershipId>> MembershipIdsAfterAsync(MembershipId? after, int limit, CancellationToken ct)
+    {
+        Guid cursor = after?.Value ?? Guid.Empty;
+        var ids = await db.Database
+            .SqlQuery<Guid>($"SELECT Id AS Value FROM memberships WHERE Id > {cursor} ORDER BY Id LIMIT {limit}")
+            .ToListAsync(ct);
+        return [.. ids.Select(id => new MembershipId(id))];
+    }
+
+    public async Task<ExpiryTotals> ExpiryTotalsOfAsync(LedgerAccount account, DateTimeOffset creditedBefore, CancellationToken ct)
+    {
+        long beforeUnixMs = creditedBefore.ToUnixTimeMilliseconds();
+        long credited = await db.LedgerEntries
+            .Where(entry => entry.Account == account.Value && entry.SignedCents > 0)
+            .Join(db.LedgerTransactions.Where(transaction => transaction.PostedAtUnixMs < beforeUnixMs), entry => entry.TransactionId, transaction => transaction.Id, (entry, _) => entry.SignedCents)
+            .SumAsync(ct);
+        long debited = await db.LedgerEntries
+            .Where(entry => entry.Account == account.Value && entry.SignedCents < 0)
+            .SumAsync(entry => -entry.SignedCents, ct);
+        return new ExpiryTotals(Money.FromCents(credited), Money.FromCents(debited));
+    }
+
     public void Add(Membership membership) => db.Memberships.Add(membership);
 
     public void Append(LedgerTransaction transaction)
@@ -79,6 +103,7 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
         Fingerprint = transaction.Header.Fingerprint,
         Description = transaction.Header.Description,
         PostedAt = transaction.Header.PostedAt,
+        PostedAtUnixMs = transaction.Header.PostedAt.ToUnixTimeMilliseconds(),
         ActorKind = transaction.Header.Caller.Actor.Kind.ToString(),
         ActorId = transaction.Header.Caller.Actor.Id,
         CorrelationId = transaction.Header.Caller.CorrelationId,
@@ -110,7 +135,9 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
         }
         finally
         {
+            // The unit of work ends here, saved or not: a failed posting left tracked would be retried by the next save.
             appended.Clear();
+            db.ChangeTracker.Clear();
         }
     }
 

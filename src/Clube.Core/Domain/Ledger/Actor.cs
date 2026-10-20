@@ -9,6 +9,7 @@ public enum ActorKind
     Member,
     PaymentProvider,
     Operator,
+    System,
 }
 
 // Who triggered a posting. Built only through the factories, so "anonymous with an id" cannot exist.
@@ -18,6 +19,9 @@ public sealed record Actor
     public static readonly Actor Anonymous = new(ActorKind.Anonymous, null);
 
     public static readonly Actor PixProvider = new(ActorKind.PaymentProvider, "pix");
+
+    // The monthly job that expires unused credit: no person behind it, so the job's name is the id.
+    public static readonly Actor CreditExpiry = new(ActorKind.System, "credit-expiry");
 
     public ActorKind Kind { get; }
     public string? Id { get; }

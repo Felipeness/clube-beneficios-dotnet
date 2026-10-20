@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Clube.Adapters.Http/Clube.Adapters.Http.csproj" />
+    <Project Path="src/Clube.Adapters.Jobs/Clube.Adapters.Jobs.csproj" />
     <Project Path="src/Clube.Adapters.Partners/Clube.Adapters.Partners.csproj" />
     <Project Path="src/Clube.Adapters.Sqlite/Clube.Adapters.Sqlite.csproj" />
     <Project Path="src/Clube.Core/Clube.Core.csproj" />

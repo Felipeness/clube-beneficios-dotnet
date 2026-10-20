@@ -65,6 +65,18 @@ public sealed class Membership
         return PostTransfer(Account, LedgerAccount.Redemptions, reward.Price, new TransactionHeader(key, RedemptionFingerprint(reward), $"Redemption {reward.Id}", context.At, context.Caller));
     }
 
+    // Moves what CreditExpiry decided out of the member's account into breakage; nothing to expire is refused by the ledger.
+    public Result<LedgerTransaction> ExpireCredits(Money expiring, BillingPeriod cutoff, PostingContext context)
+    {
+        var header = new TransactionHeader(
+            IdempotencyKey.ForExpiry(Id, cutoff),
+            $"expire:{expiring.Cents}",
+            $"Credit expired (credits up to {cutoff})",
+            context.At,
+            context.Caller);
+        return PostTransfer(Account, LedgerAccount.Breakage, expiring, header);
+    }
+
     // The balance may end up negative (a credit reversed after being spent): that is a debt, and Redeem
     // keeps refusing new redemptions until the balance covers the price again.
     public Result<LedgerTransaction> Reverse(PostedTransaction original, PostingContext context) =>

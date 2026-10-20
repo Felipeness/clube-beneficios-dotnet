@@ -19,6 +19,9 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships, IForStor
 
     public IReadOnlyCollection<OutboxMessage> Outbox => savedOutbox.Values;
 
+    // Makes summing this account blow up, to prove a job carries on past a member the database chokes on.
+    public LedgerAccount? BrokenAccount { get; set; }
+
     public Task<Membership?> FindAsync(MembershipId id, CancellationToken ct) =>
         Task.FromResult(savedMembers.GetValueOrDefault(id));
 
@@ -43,6 +46,23 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships, IForStor
 
     public Task<PostedTransaction?> FindTransactionByReferenceAsync(PaymentReference reference, CancellationToken ct) =>
         Task.FromResult(ToPosted(postedTransactions.FirstOrDefault(transaction => transaction.Header.ExternalReference == reference)));
+
+    public Task<IReadOnlyList<MembershipId>> MembershipIdsAfterAsync(MembershipId? after, int limit, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<MembershipId>>([.. savedMembers.Keys
+            .Where(id => after is not MembershipId cursor || id.Value.CompareTo(cursor.Value) > 0)
+            .OrderBy(id => id.Value)
+            .Take(limit)]);
+
+    public Task<ExpiryTotals> ExpiryTotalsOfAsync(LedgerAccount account, DateTimeOffset creditedBefore, CancellationToken ct)
+    {
+        if (account == BrokenAccount) throw new InvalidOperationException("disk on fire");
+        var entries = postedTransactions
+            .SelectMany(transaction => transaction.Entries.Where(entry => entry.Account == account).Select(entry => (transaction.Header.PostedAt, entry.SignedCents)))
+            .ToList();
+        long credited = entries.Where(entry => entry.SignedCents > 0 && entry.PostedAt < creditedBefore).Sum(entry => entry.SignedCents);
+        long debited = entries.Where(entry => entry.SignedCents < 0).Sum(entry => -entry.SignedCents);
+        return Task.FromResult(new ExpiryTotals(Money.FromCents(credited), Money.FromCents(debited)));
+    }
 
     public void Add(Membership membership) => pendingMembers.Add(membership);
 

@@ -19,6 +19,18 @@ public readonly record struct BillingPeriod
     public static BillingPeriod At(DateTimeOffset instant) =>
         Containing(DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(instant, BillingZone).DateTime));
 
+    public BillingPeriod AddMonths(int months) => new(Start.AddMonths(months));
+
+    // The first instant of the next period in Sao Paulo: everything posted before it belongs to this period or an earlier one.
+    public DateTimeOffset EndsAt
+    {
+        get
+        {
+            var nextStart = Start.AddMonths(1).ToDateTime(TimeOnly.MinValue);
+            return new DateTimeOffset(nextStart, BillingZone.GetUtcOffset(nextStart));
+        }
+    }
+
     public static Result<BillingPeriod> Parse(string raw) =>
         DateOnly.TryParseExact(raw, Format, CultureInfo.InvariantCulture, DateTimeStyles.None, out var start)
             ? Containing(start)

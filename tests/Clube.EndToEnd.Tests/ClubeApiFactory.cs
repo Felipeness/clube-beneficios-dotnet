@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text;
+using Clube.Adapters.Jobs;
 using Clube.Adapters.Partners;
+using Clube.Core.Domain.Memberships;
 using Clube.Core.Domain.Vouchers;
 using Clube.Core.Ports.Driving;
 using Microsoft.AspNetCore.Hosting;
@@ -67,6 +69,8 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<TimeProvider>(Clock);
             // A relay running on its own would race the assertions; tests settle the outbox with DispatchOutboxAsync instead.
             services.Remove(services.Single(service => service.ImplementationType == typeof(OutboxWorker)));
+            // Same for credit expiry: a daily run at startup would expire under the tests' feet; RunCreditExpiryAsync triggers it.
+            services.Remove(services.Single(service => service.ImplementationType == typeof(CreditExpiryWorker)));
         });
     }
 
@@ -74,6 +78,12 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
     {
         await using var scope = Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<IForRelayingTheOutbox>().DispatchBatchAsync(default);
+    }
+
+    public async Task<CreditExpiryReport> RunCreditExpiryAsync()
+    {
+        await using var scope = Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<IForExpiringCredits>().RunAsync(CreditExpiry.CutoffAt(Clock.GetUtcNow()), default);
     }
 
     public HttpClient CreateClientAsMember(Guid membershipId) => CreateClientWith(MemberToken(membershipId));

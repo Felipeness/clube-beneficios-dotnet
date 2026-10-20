@@ -27,6 +27,12 @@ public interface IForStoringMemberships
     /// <summary>The transaction posted for this provider payment, or null when no posting carries the reference.</summary>
     Task<PostedTransaction?> FindTransactionByReferenceAsync(PaymentReference reference, CancellationToken ct);
 
+    /// <summary>Keyset page of membership ids in the store's own id order, starting after <paramref name="after"/> (null for the first page).</summary>
+    Task<IReadOnlyList<MembershipId>> MembershipIdsAfterAsync(MembershipId? after, int limit, CancellationToken ct);
+
+    /// <summary>Summed by the store, never by loading entries: credits posted before <paramref name="creditedBefore"/> and every debit.</summary>
+    Task<ExpiryTotals> ExpiryTotalsOfAsync(LedgerAccount account, DateTimeOffset creditedBefore, CancellationToken ct);
+
     void Add(Membership membership);
 
     /// <summary>Append-only: the store must never update or delete a posted transaction.</summary>
@@ -35,6 +41,9 @@ public interface IForStoringMemberships
     /// <summary>Transactional outbox: commits with the posting it describes in the next save, or not at all.</summary>
     void Enqueue(OutboxMessage message);
 
-    /// <summary>Returns false when another write won the race (stale version, duplicate holder or idempotency key).</summary>
+    /// <summary>
+    /// Returns false when another write won the race (stale version, duplicate holder or idempotency key). Ends the unit of
+    /// work either way: nothing pending or tracked survives it, so a job posting member after member never retries a failure.
+    /// </summary>
     Task<bool> TrySaveChangesAsync(CancellationToken ct);
 }

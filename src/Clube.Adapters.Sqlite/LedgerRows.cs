@@ -12,6 +12,9 @@ internal sealed class LedgerTransactionRow
     public required string Fingerprint { get; init; }
     public required string Description { get; init; }
     public DateTimeOffset PostedAt { get; init; }
+    // The same instant as unix milliseconds (UTC), because SQLite cannot compare a DateTimeOffset column through EF Core.
+    // PostedAt stays as the readable value with its offset; this one exists only for range filters like the expiry cutoff.
+    public long PostedAtUnixMs { get; init; }
     public required string ActorKind { get; init; }
     public string? ActorId { get; init; }
     public required string CorrelationId { get; init; }

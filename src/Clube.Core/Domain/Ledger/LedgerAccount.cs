@@ -9,6 +9,9 @@ public readonly record struct LedgerAccount
     public static readonly LedgerAccount AllowanceFunding = new("clube:allowance-funding");
     public static readonly LedgerAccount Redemptions = new("clube:redemptions");
 
+    // Where expired credit goes. Its balance is breakage revenue already recognised: the club no longer owes it to anyone.
+    public static readonly LedgerAccount Breakage = new("clube:breakage");
+
     private const string MemberPrefix = "member:";
 
     public string Value { get; }
