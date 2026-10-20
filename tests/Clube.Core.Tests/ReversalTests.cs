@@ -55,7 +55,7 @@ public class ReversalTests
     {
         var memberships = NewHexagon();
         var id = await SubscribeAsync(memberships);
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
         await memberships.RedeemRewardAsync(id, "perfume-kit", "order-1", default);
 
         var view = ResultAssert.Ok(await memberships.ReverseTransactionAsync(id, await TransactionIdAsync(memberships, id, "Redemption perfume-kit"), default));
@@ -68,7 +68,7 @@ public class ReversalTests
     {
         var memberships = NewHexagon();
         var id = await SubscribeAsync(memberships);
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
         Guid credit = await TransactionIdAsync(memberships, id, "Monthly allowance 2026-10");
 
         await memberships.ReverseTransactionAsync(id, credit, default);
@@ -84,7 +84,7 @@ public class ReversalTests
     {
         var memberships = NewHexagon();
         var id = await SubscribeAsync(memberships);
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
         await memberships.ReverseTransactionAsync(id, await TransactionIdAsync(memberships, id, "Monthly allowance 2026-10"), default);
         Guid reversal = await TransactionIdAsync(memberships, id, "Reversal of Monthly allowance 2026-10");
 
@@ -96,7 +96,7 @@ public class ReversalTests
     {
         var memberships = NewHexagon();
         var id = await SubscribeAsync(memberships);
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
         await memberships.RedeemRewardAsync(id, "perfume-kit", "order-1", default);
 
         var view = ResultAssert.Ok(await memberships.ReverseTransactionAsync(id, await TransactionIdAsync(memberships, id, "Monthly allowance 2026-10"), default));
@@ -112,7 +112,7 @@ public class ReversalTests
         var memberships = NewHexagon();
         var owner = await SubscribeAsync(memberships);
         var stranger = await SubscribeAsync(memberships, "111.444.777-35");
-        await memberships.CreditMonthlyAllowanceAsync(owner, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(owner, Payments.Allowance("2026-10"), default);
         Guid credit = await TransactionIdAsync(memberships, owner, "Monthly allowance 2026-10");
 
         Error foreign = ResultAssert.Failed(await memberships.ReverseTransactionAsync(stranger, credit, default));

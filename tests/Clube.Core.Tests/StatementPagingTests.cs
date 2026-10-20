@@ -29,7 +29,7 @@ public class StatementPagingTests
     {
         var moment = Subscribed.AddMonths(monthsAfterSubscription);
         clock.SetUtcNow(moment);
-        ResultAssert.Ok(await memberships.CreditMonthlyAllowanceAsync(id, $"{moment:yyyy-MM}", default));
+        ResultAssert.Ok(await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance($"{moment:yyyy-MM}"), default));
     }
 
     private async Task<StatementView> PageAsync(MembershipId id, int limit, StatementCursor? after = null) =>

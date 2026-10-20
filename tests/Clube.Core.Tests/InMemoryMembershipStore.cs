@@ -30,11 +30,14 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
     public Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct) =>
         Task.FromResult(postedTransactions.FirstOrDefault(transaction => transaction.Header.Key == key)?.Header.Fingerprint);
 
-    public Task<PostedTransaction?> FindTransactionAsync(Guid id, CancellationToken ct)
-    {
-        var found = postedTransactions.FirstOrDefault(transaction => transaction.Id == id);
-        return Task.FromResult(found is null ? null : new PostedTransaction(found.Id, found.Header.Description, found.Entries, found.Header.ReversesTransactionId));
-    }
+    public Task<PostedTransaction?> FindTransactionAsync(Guid id, CancellationToken ct) =>
+        Task.FromResult(ToPosted(postedTransactions.FirstOrDefault(transaction => transaction.Id == id)));
+
+    private static PostedTransaction? ToPosted(LedgerTransaction? found) =>
+        found is null ? null : new PostedTransaction(found.Id, found.Header.Description, found.Entries, found.Header.ReversesTransactionId);
+
+    public Task<PostedTransaction?> FindTransactionByReferenceAsync(PaymentReference reference, CancellationToken ct) =>
+        Task.FromResult(ToPosted(postedTransactions.FirstOrDefault(transaction => transaction.Header.ExternalReference == reference)));
 
     public void Add(Membership membership) => pendingMembers.Add(membership);
 
@@ -61,8 +64,11 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
     private bool HolderTaken() =>
         pendingMembers.Any(candidate => savedMembers.Values.Any(existing => existing.Holder == candidate.Holder));
 
+    // Mirrors the unique indexes on the idempotency key and on the provider's payment reference.
     private bool KeyTaken() =>
-        pendingTransactions.Any(candidate => postedTransactions.Any(posted => posted.Header.Key == candidate.Header.Key));
+        pendingTransactions.Any(candidate => postedTransactions.Any(posted =>
+            posted.Header.Key == candidate.Header.Key
+            || (candidate.Header.ExternalReference is not null && posted.Header.ExternalReference == candidate.Header.ExternalReference)));
 
     private void Commit()
     {

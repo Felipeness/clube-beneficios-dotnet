@@ -17,6 +17,13 @@ public static class HttpAdapter
         services.AddProblemDetails();
         services.AddHttpContextAccessor();
         services.AddScoped<IForIdentifyingTheCaller, HttpCaller>();
+        // Fails the boot instead of serving a webhook that could be forged with an empty or guessable key.
+        services.AddOptions<PspOptions>()
+            .BindConfiguration(PspOptions.Section)
+            .Validate(psp => psp.WebhookSecret.Length >= PspOptions.MinimumSecretLength, $"Psp:WebhookSecret must have at least {PspOptions.MinimumSecretLength} characters.")
+            .ValidateOnStart();
+        services.AddSingleton<PixSignature>();
+        services.AddScoped<PixWebhookReceiver>();
         return services.ConfigureHttpJsonOptions(options =>
         {
             // Turns a missing or null "cpf" into a 400 at the boundary instead of a NullReferenceException.
@@ -43,6 +50,7 @@ public static class HttpAdapter
             app.MapScalarApiReference();
         }
         app.MapMemberships();
+        app.MapPixWebhooks();
         return app;
     }
 }

@@ -47,11 +47,14 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
             .Select(transaction => (string?)transaction.Fingerprint)
             .SingleOrDefaultAsync(ct);
 
-    public async Task<PostedTransaction?> FindTransactionAsync(Guid id, CancellationToken ct)
-    {
-        var row = await db.LedgerTransactions.Include(transaction => transaction.Entries).SingleOrDefaultAsync(transaction => transaction.Id == id, ct);
-        return row is null ? null : new PostedTransaction(row.Id, row.Description, [.. row.Entries.Select(ToEntry)], row.ReversesTransactionId);
-    }
+    public async Task<PostedTransaction?> FindTransactionAsync(Guid id, CancellationToken ct) =>
+        ToPosted(await db.LedgerTransactions.Include(transaction => transaction.Entries).SingleOrDefaultAsync(transaction => transaction.Id == id, ct));
+
+    public async Task<PostedTransaction?> FindTransactionByReferenceAsync(PaymentReference reference, CancellationToken ct) =>
+        ToPosted(await db.LedgerTransactions.Include(transaction => transaction.Entries).SingleOrDefaultAsync(transaction => transaction.ExternalReference == reference.Value, ct));
+
+    private static PostedTransaction? ToPosted(LedgerTransactionRow? row) =>
+        row is null ? null : new PostedTransaction(row.Id, row.Description, [.. row.Entries.Select(ToEntry)], row.ReversesTransactionId);
 
     private static LedgerEntry ToEntry(LedgerEntryRow row) => new(
         LedgerAccount.FromStored(row.Account),
@@ -77,6 +80,7 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
         ActorId = transaction.Header.Caller.Actor.Id,
         CorrelationId = transaction.Header.Caller.CorrelationId,
         ReversesTransactionId = transaction.Header.ReversesTransactionId,
+        ExternalReference = transaction.Header.ExternalReference?.Value,
         Entries = [.. transaction.Entries.Select(entry => new LedgerEntryRow
         {
             TransactionId = transaction.Id,

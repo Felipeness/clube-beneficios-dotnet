@@ -23,6 +23,9 @@ public interface IForStoringMemberships
     /// <summary>A posted transaction with its entries, or null when no transaction has this id.</summary>
     Task<PostedTransaction?> FindTransactionAsync(Guid id, CancellationToken ct);
 
+    /// <summary>The transaction posted for this provider payment, or null when no posting carries the reference.</summary>
+    Task<PostedTransaction?> FindTransactionByReferenceAsync(PaymentReference reference, CancellationToken ct);
+
     void Add(Membership membership);
 
     /// <summary>Append-only: the store must never update or delete a posted transaction.</summary>

@@ -40,17 +40,41 @@ public sealed class MembershipManager(IForStoringMemberships memberships, IForId
         return new StatementView(id.Value, balance.Cents, slice.Lines, slice.Next);
     }
 
-    public async Task<Result<MembershipView>> CreditMonthlyAllowanceAsync(MembershipId id, string period, CancellationToken ct)
+    public async Task<Result<AllowanceCreditOutcome>> CreditMonthlyAllowanceAsync(MembershipId id, ReceivedPayment payment, CancellationToken ct)
     {
-        if (!BillingPeriod.Parse(period).TryGetValue(out var billingPeriod, out var invalidPeriod)) return invalidPeriod;
+        if (!ParsePayment(payment).TryGetValue(out var allowance, out var invalidPayment)) return invalidPayment;
 
         var membership = await memberships.FindAsync(id, ct);
         if (membership is null) return MembershipErrors.NotFound;
-        // Fast path for retries; the unique index on the key is what actually guarantees it.
-        if (await memberships.FindPostedFingerprintAsync(IdempotencyKey.ForAllowance(id, billingPeriod), ct) is not null) return await ViewOfAsync(membership, ct);
-        if (!membership.CreditMonthlyAllowance(billingPeriod, PostingContextNow()).TryGetValue(out var posting, out var rejected)) return rejected;
+        // Fast path for redeliveries; the unique index on the key is what actually guarantees it. A paid period never
+        // reaches the window check again, and another payment for it is the member paying twice, not a retry.
+        string? postedFingerprint = await memberships.FindPostedFingerprintAsync(IdempotencyKey.ForAllowance(id, allowance.Period), ct);
+        if (postedFingerprint is not null)
+            return postedFingerprint == Membership.AllowanceFingerprint(allowance.Reference) ? AllowanceCreditOutcome.AlreadyCredited : AllowanceCreditOutcome.DuplicatePayment;
+        if (!membership.CreditMonthlyAllowance(allowance, PostingContextNow()).TryGetValue(out var posting, out var rejected)) return rejected;
 
-        return await PostAsync(membership, posting, ct);
+        if (!await TryPostAsync(posting, ct)) return MembershipErrors.ConcurrentUpdate;
+        return AllowanceCreditOutcome.Credited;
+    }
+
+    public async Task<Result<PaymentRefundOutcome>> RefundPaymentAsync(string originalReference, CancellationToken ct)
+    {
+        if (!PaymentReference.Parse(originalReference).TryGetValue(out var reference, out var invalidReference)) return invalidReference;
+
+        var credit = await memberships.FindTransactionByReferenceAsync(reference, ct);
+        if (credit?.Member is not MembershipId owner) return PaymentRefundOutcome.UnknownPayment;
+        if (await memberships.FindPostedFingerprintAsync(IdempotencyKey.ForReversal(credit.Id), ct) is not null) return PaymentRefundOutcome.AlreadyRefunded;
+
+        var reversed = await ReverseTransactionAsync(owner, credit.Id, ct);
+        return reversed.TryGetValue(out _, out var rejected) ? PaymentRefundOutcome.Refunded : rejected;
+    }
+
+    private static Result<AllowancePayment> ParsePayment(ReceivedPayment payment)
+    {
+        if (!PaymentReference.Parse(payment.Reference).TryGetValue(out var reference, out var invalidReference)) return invalidReference;
+        if (!BillingPeriod.Parse(payment.Period).TryGetValue(out var period, out var invalidPeriod)) return invalidPeriod;
+
+        return new AllowancePayment(period, Money.FromCents(payment.AmountCents), reference);
     }
 
     public async Task<Result<MembershipView>> RedeemRewardAsync(MembershipId id, string rewardId, string idempotencyKey, CancellationToken ct)
@@ -89,10 +113,15 @@ public sealed class MembershipManager(IForStoringMemberships memberships, IForId
 
     private async Task<Result<MembershipView>> PostAsync(Membership membership, LedgerTransaction posting, CancellationToken ct)
     {
-        memberships.Append(posting);
-        if (!await memberships.TrySaveChangesAsync(ct)) return MembershipErrors.ConcurrentUpdate;
+        if (!await TryPostAsync(posting, ct)) return MembershipErrors.ConcurrentUpdate;
 
         return await ViewOfAsync(membership, ct);
+    }
+
+    private Task<bool> TryPostAsync(LedgerTransaction posting, CancellationToken ct)
+    {
+        memberships.Append(posting);
+        return memberships.TrySaveChangesAsync(ct);
     }
 
     private async Task<MembershipView> ViewOfAsync(Membership membership, CancellationToken ct) =>

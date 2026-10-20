@@ -24,23 +24,11 @@ public class MembershipManagerTests
         new(ResultAssert.Ok(await memberships.SubscribeAsync(Holder, default)).Id);
 
     [Fact]
-    public async Task CreditsEachPeriodOnlyOnce()
-    {
-        var memberships = NewHexagon();
-        var id = await SubscribeAsync(memberships);
-
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
-        var retried = ResultAssert.Ok(await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default));
-
-        Assert.Equal(Membership.MonthlyAllowance.Cents, retried.BalanceCents);
-    }
-
-    [Fact]
     public async Task ChargesARetriedRedemptionOnce()
     {
         var memberships = NewHexagon();
         var id = await SubscribeAsync(memberships);
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
 
         await memberships.RedeemRewardAsync(id, "cinema-ticket", "order-42", default);
         var retried = ResultAssert.Ok(await memberships.RedeemRewardAsync(id, "cinema-ticket", "order-42", default));
@@ -53,7 +41,7 @@ public class MembershipManagerTests
     {
         var memberships = NewHexagon();
         var id = await SubscribeAsync(memberships);
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
         await memberships.RedeemRewardAsync(id, "cinema-ticket", "order-42", default);
 
         Error reused = ResultAssert.Failed(await memberships.RedeemRewardAsync(id, "thermal-bottle", "order-42", default));
@@ -69,9 +57,9 @@ public class MembershipManagerTests
         var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-10-20T15:00:00Z"));
         var memberships = NewHexagon(clock);
         var id = await SubscribeAsync(memberships);
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
         clock.SetUtcNow(DateTimeOffset.Parse("2026-11-05T15:00:00Z"));
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-11", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-11"), default);
         await memberships.RedeemRewardAsync(id, "thermal-bottle", "order-1", default);
 
         var statement = ResultAssert.Ok(await memberships.GetStatementAsync(id, StatementPage.Default, default));
@@ -89,7 +77,7 @@ public class MembershipManagerTests
         var memberships = NewHexagon();
         var id = await SubscribeAsync(memberships);
 
-        Error rejected = ResultAssert.Failed(await memberships.CreditMonthlyAllowanceAsync(id, period, default));
+        Error rejected = ResultAssert.Failed(await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance(period), default));
         long balance = ResultAssert.Ok(await memberships.GetAsync(id, default)).BalanceCents;
 
         Assert.Equal(expectedErrorCode, rejected.Code);
@@ -105,7 +93,7 @@ public class MembershipManagerTests
         var memberships = new MembershipManager(store, new FakeCaller(actor, "corr-77"), new FakeTimeProvider(DateTimeOffset.Parse("2026-10-20T15:00:00Z")));
         var id = await SubscribeAsync(memberships);
 
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
         var line = Assert.Single(ResultAssert.Ok(await memberships.GetStatementAsync(id, StatementPage.Default, default)).Lines);
 
         Assert.Equal(new CallerContext(actor, "corr-77"), Assert.Single(store.PostedTransactions).Header.Caller);
@@ -119,7 +107,7 @@ public class MembershipManagerTests
         var memberships = NewHexagon();
         var id = await SubscribeAsync(memberships);
 
-        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.CreditMonthlyAllowanceAsync(id, Payments.Allowance("2026-10"), default);
         var line = Assert.Single(ResultAssert.Ok(await memberships.GetStatementAsync(id, StatementPage.Default, default)).Lines);
 
         Assert.Equal(ActorKind.Anonymous, line.ActorKind);

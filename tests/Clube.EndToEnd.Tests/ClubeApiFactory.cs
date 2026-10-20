@@ -35,12 +35,16 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
         return command.ExecuteScalar()?.ToString();
     }
 
+    // The webhook signs with this; it is a test value, not the Development one, so tests never depend on appsettings.
+    public const string WebhookSecret = "test-pix-webhook-secret-0123456789abcdef";
+
     // The ledger rules depend on "now", so tests own the clock instead of reading the machine's.
     public FakeTimeProvider Clock { get; } = new(DateTimeOffset.Parse("2026-10-20T15:00:00Z"));
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseSetting("ConnectionStrings:Clube", connectionString);
+        builder.UseSetting("Psp:WebhookSecret", WebhookSecret);
         builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Clock));
     }
 

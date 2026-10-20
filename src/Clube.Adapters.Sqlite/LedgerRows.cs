@@ -16,6 +16,7 @@ internal sealed class LedgerTransactionRow
     public string? ActorId { get; init; }
     public required string CorrelationId { get; init; }
     public Guid? ReversesTransactionId { get; init; }
+    public string? ExternalReference { get; init; }
     public List<LedgerEntryRow> Entries { get; init; } = [];
 }
 
@@ -39,7 +40,10 @@ internal sealed class LedgerTransactionConfiguration : IEntityTypeConfiguration<
         builder.Property(transaction => transaction.ActorId).HasMaxLength(64);
         builder.Property(transaction => transaction.CorrelationId).HasMaxLength(64);
         builder.HasIndex(transaction => transaction.IdempotencyKey).IsUnique();
+        builder.Property(transaction => transaction.ExternalReference).HasMaxLength(64);
         builder.HasIndex(transaction => transaction.CorrelationId);
+        // A provider payment is posted once, ever; SQLite lets the many internal postings without one share NULL.
+        builder.HasIndex(transaction => transaction.ExternalReference).IsUnique();
         builder.HasMany(transaction => transaction.Entries).WithOne().HasForeignKey(entry => entry.TransactionId);
     }
 }

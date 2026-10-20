@@ -1,3 +1,4 @@
+using Clube.Core.Domain.Memberships;
 using Clube.Core.Domain.Shared;
 
 namespace Clube.Core.Domain.Ledger;
@@ -14,12 +15,20 @@ public sealed record LedgerEntry(LedgerAccount Account, Money Amount, EntryDirec
 }
 
 public sealed record TransactionHeader(
-    IdempotencyKey Key, string Fingerprint, string Description, DateTimeOffset PostedAt, CallerContext Caller, Guid? ReversesTransactionId = null);
+    IdempotencyKey Key,
+    string Fingerprint,
+    string Description,
+    DateTimeOffset PostedAt,
+    CallerContext Caller,
+    Guid? ReversesTransactionId = null,
+    PaymentReference? ExternalReference = null);
 
 // A posted transaction as read back from the store: enough to mirror it, without exposing a way to rebuild or edit one.
 public sealed record PostedTransaction(Guid Id, string Description, IReadOnlyList<LedgerEntry> Entries, Guid? ReversesTransactionId)
 {
     public bool Touches(LedgerAccount account) => Entries.Any(entry => entry.Account == account);
+
+    public MembershipId? Member => Entries.Select(entry => entry.Account.Owner).FirstOrDefault(owner => owner is not null);
 }
 
 public sealed record StatementLine(Guid TransactionId, string Description, long AmountCents, DateTimeOffset PostedAt, ActorKind ActorKind, string? ActorId);

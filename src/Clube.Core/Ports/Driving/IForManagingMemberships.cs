@@ -16,7 +16,11 @@ public interface IForManagingMemberships
 
     Task<Result<StatementView>> GetStatementAsync(MembershipId id, StatementPage page, CancellationToken ct);
 
-    Task<Result<MembershipView>> CreditMonthlyAllowanceAsync(MembershipId id, string period, CancellationToken ct);
+    /// <summary>Credits the period a confirmed payment pays for; a redelivery or a second payment for a paid period credits nothing.</summary>
+    Task<Result<AllowanceCreditOutcome>> CreditMonthlyAllowanceAsync(MembershipId id, ReceivedPayment payment, CancellationToken ct);
+
+    /// <summary>Reverses the credit posted for the refunded payment, found by its provider reference.</summary>
+    Task<Result<PaymentRefundOutcome>> RefundPaymentAsync(string originalReference, CancellationToken ct);
 
     Task<Result<MembershipView>> RedeemRewardAsync(MembershipId id, string rewardId, string idempotencyKey, CancellationToken ct);
 

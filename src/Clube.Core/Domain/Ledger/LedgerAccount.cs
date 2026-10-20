@@ -9,11 +9,19 @@ public readonly record struct LedgerAccount
     public static readonly LedgerAccount AllowanceFunding = new("clube:allowance-funding");
     public static readonly LedgerAccount Redemptions = new("clube:redemptions");
 
+    private const string MemberPrefix = "member:";
+
     public string Value { get; }
 
     private LedgerAccount(string value) => Value = value;
 
-    public static LedgerAccount Member(MembershipId id) => new($"member:{id}");
+    public static LedgerAccount Member(MembershipId id) => new($"{MemberPrefix}{id}");
+
+    // The inverse of Member: which membership owns this account, or null for the club's own accounts.
+    public MembershipId? Owner =>
+        Value.StartsWith(MemberPrefix, StringComparison.Ordinal) && Guid.TryParse(Value.AsSpan(MemberPrefix.Length), out Guid id)
+            ? new MembershipId(id)
+            : null;
 
     // Rebuilds an account from what a store persisted; new accounts are only born through the factories above.
     public static LedgerAccount FromStored(string value) => new(value);

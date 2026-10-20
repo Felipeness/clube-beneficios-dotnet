@@ -7,6 +7,7 @@ public enum ActorKind
 {
     Anonymous,
     Member,
+    PaymentProvider,
 }
 
 // Who triggered a posting. Built only through the factories, so "anonymous with an id" cannot exist.
@@ -14,6 +15,8 @@ public enum ActorKind
 public sealed record Actor
 {
     public static readonly Actor Anonymous = new(ActorKind.Anonymous, null);
+
+    public static readonly Actor PixProvider = new(ActorKind.PaymentProvider, "pix");
 
     public ActorKind Kind { get; }
     public string? Id { get; }

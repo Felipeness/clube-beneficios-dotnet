@@ -37,6 +37,9 @@ public static class MembershipErrors
     public static readonly Error PeriodBeforeSubscription =
         new("membership.period_before_subscription", "Billing period is before the membership started.", ErrorKind.BusinessRule);
 
+    public static readonly Error AllowanceAmountMismatch =
+        new("membership.allowance_amount_mismatch", "Payment amount differs from the monthly allowance.", ErrorKind.BusinessRule);
+
     public static readonly Error InsufficientBalance =
         new("membership.insufficient_balance", "Balance does not cover this reward.", ErrorKind.BusinessRule);
 }

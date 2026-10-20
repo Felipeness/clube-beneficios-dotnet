@@ -24,14 +24,15 @@ public class MembershipApiTests
         var created = await SubscribeAsync(client);
         string membership = $"/memberships/{created.Id}";
 
-        await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
-        var retriedCredit = await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
+        await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
+        var credited = await client.GetFromJsonAsync<MembershipView>(membership, Json);
         await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
         var retriedRedemption = await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
         var statement = await client.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
 
         Assert.Equal("***.982.247-**", created.Holder);
-        Assert.Equal(2000, retriedCredit.BalanceCents);
+        Assert.NotNull(credited);
+        Assert.Equal(2000, credited.BalanceCents);
         Assert.Equal(1000, retriedRedemption.BalanceCents);
         Assert.NotNull(statement);
         Assert.Equal([-1000L, 2000L], statement.Lines.Select(line => line.AmountCents));
@@ -45,15 +46,16 @@ public class MembershipApiTests
         var created = await SubscribeAsync(client);
         const string traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"/memberships/{created.Id}/allowance-credits") { Content = JsonContent.Create(new { period = "2026-10" }) };
-        request.Headers.Add("traceparent", $"00-{traceId}-00f067aa0ba902b7-01");
-        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(request)).StatusCode);
+        client.DefaultRequestHeaders.Add("traceparent", $"00-{traceId}-00f067aa0ba902b7-01");
+        await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
         var statement = await client.GetFromJsonAsync<StatementResponse>($"/memberships/{created.Id}/statement", Json);
 
         Assert.Equal(traceId, factory.QueryScalar("SELECT CorrelationId FROM ledger_transactions"));
-        Assert.Equal("Anonymous", factory.QueryScalar("SELECT ActorKind FROM ledger_transactions"));
+        Assert.Equal("PaymentProvider", factory.QueryScalar("SELECT ActorKind FROM ledger_transactions"));
         Assert.NotNull(statement);
-        Assert.Equal(ActorKind.Anonymous, Assert.Single(statement.Lines).ActorKind);
+        var line = Assert.Single(statement.Lines);
+        Assert.Equal(ActorKind.PaymentProvider, line.ActorKind);
+        Assert.Equal("pix", line.ActorId);
     }
 
     [Fact]
@@ -63,7 +65,7 @@ public class MembershipApiTests
         var client = factory.CreateClient();
         var created = await SubscribeAsync(client);
         string membership = $"/memberships/{created.Id}";
-        await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
+        await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
         await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, $"{membership}/redemptions") { Content = JsonContent.Create(new { rewardId = "thermal-bottle" }) };
@@ -105,9 +107,6 @@ public class MembershipApiTests
         { $"/memberships/{Guid.Empty}/redemptions", new { rewardId = "cinema-ticket" }, HttpStatusCode.NotFound },
         { "{membership}/redemptions", new { rewardId = "yacht" }, HttpStatusCode.NotFound },
         { "{membership}/redemptions", new { rewardId = "cinema-ticket" }, HttpStatusCode.UnprocessableEntity },
-        { "{membership}/allowance-credits", new { period = "2026-13" }, HttpStatusCode.BadRequest },
-        { "{membership}/allowance-credits", new { period = "2026-11" }, HttpStatusCode.UnprocessableEntity },
-        { "{membership}/allowance-credits", new { period = "2026-09" }, HttpStatusCode.UnprocessableEntity },
     };
 
     [Theory]
@@ -132,7 +131,7 @@ public class MembershipApiTests
         await using var factory = new ClubeApiFactory();
         var client = factory.CreateClient();
         var membership = await SubscribeAsync(client);
-        await PostAsync<MembershipView>(client, $"/memberships/{membership.Id}/allowance-credits", new { period = "2026-10" });
+        await PixWebhook.CreditAsync(factory, client, membership.Id, "2026-10");
 
         var refused = Assert.Throws<SqliteException>(() => factory.ExecuteSql(sql));
 
@@ -151,10 +150,6 @@ public class MembershipApiTests
 
         Assert.True(responses.TryGetProperty("400", out _), "POST /memberships must document invalid CPF");
         Assert.True(responses.TryGetProperty("409", out _), "POST /memberships must document duplicate holder");
-
-        JsonElement credit = document.RootElement
-            .GetProperty("paths").GetProperty("/memberships/{id}/allowance-credits").GetProperty("post").GetProperty("responses");
-        Assert.True(credit.TryGetProperty("422", out _), "allowance credit must document periods outside the membership window");
     }
 
     [Fact]
@@ -220,7 +215,7 @@ public class MembershipApiTests
         var client = factory.CreateClient();
         var created = await SubscribeAsync(client);
         string membership = $"/memberships/{created.Id}";
-        await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
+        await PixWebhook.CreditAsync(factory, client, created.Id, "2026-10");
         await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
         var before = await client.GetFromJsonAsync<StatementResponse>($"{membership}/statement", Json);
         Assert.NotNull(before);
@@ -263,7 +258,7 @@ public class MembershipApiTests
         {
             var moment = start.AddMonths(month);
             factory.Clock.SetUtcNow(moment);
-            await PostAsync<MembershipView>(client, $"/memberships/{membershipId}/allowance-credits", new { period = $"{moment:yyyy-MM}" });
+            await PixWebhook.CreditAsync(factory, client, membershipId, $"{moment:yyyy-MM}");
         }
     }
 

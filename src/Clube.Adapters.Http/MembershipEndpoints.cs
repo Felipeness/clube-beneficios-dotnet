@@ -15,10 +15,6 @@ public sealed record SubscribeRequest(
     [property: Description("11 digits, with or without punctuation (529.982.247-25). Check digits are validated; repeated digits are rejected.")]
     string Cpf);
 
-public sealed record CreditAllowanceRequest(
-    [property: Description("Billing period as yyyy-MM. Credits R$ 20,00 once per period; re-sending it is a no-op. Must fall between the subscription month and the current month (America/Sao_Paulo), otherwise 422.")]
-    string Period);
-
 public sealed record RedeemRequest(
     [property: Description("One of: cinema-ticket (R$ 10,00), perfume-kit (R$ 20,00), thermal-bottle (R$ 29,90 with 15% off: R$ 25,41).")]
     string RewardId);
@@ -48,11 +44,6 @@ internal static class MembershipEndpoints
         memberships.MapGet("/{id:guid}/statement", GetStatement)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound);
-        memberships.MapPost("/{id:guid}/allowance-credits", CreditAllowance)
-            .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict)
-            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         memberships.MapPost("/{id:guid}/redemptions", Redeem)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -107,13 +98,6 @@ internal static class MembershipEndpoints
         statement.BalanceCents,
         statement.Lines,
         statement.Next is null ? null : StatementCursorCodec.Encode(statement.Next));
-
-    private static async Task<Results<Ok<MembershipView>, ProblemHttpResult>> CreditAllowance(
-        Guid id, CreditAllowanceRequest request, IForManagingMemberships memberships, CancellationToken ct)
-    {
-        var result = await memberships.CreditMonthlyAllowanceAsync(new MembershipId(id), request.Period, ct);
-        return result.TryGetValue(out var view, out var error) ? TypedResults.Ok(view) : error.ToProblem();
-    }
 
     private static async Task<Results<Ok<MembershipView>, ProblemHttpResult>> Redeem(
         Guid id,

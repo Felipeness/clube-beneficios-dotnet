@@ -38,20 +38,24 @@ public sealed class Membership
     // What a request means, stored beside its key: the same key with another meaning is a client bug, not a retry.
     public static string RedemptionFingerprint(Reward reward) => $"redeem:{reward.Id}";
 
-    // The allowance key already spells out member and period, so the fingerprint is the key itself.
-    public static string AllowanceFingerprint(MembershipId id, BillingPeriod period) => IdempotencyKey.ForAllowance(id, period).Value;
+    // The allowance key already spells out member and period; what tells a redelivery from a second payment is the payment itself.
+    public static string AllowanceFingerprint(PaymentReference reference) => $"payment:{reference}";
 
-    // Only periods from the subscription month up to the current one can be credited: no advancing the allowance.
-    public Result<LedgerTransaction> CreditMonthlyAllowance(BillingPeriod period, PostingContext context)
+    // Only the exact allowance, for periods from the subscription month up to the current one: no advancing it.
+    public Result<LedgerTransaction> CreditMonthlyAllowance(AllowancePayment payment, PostingContext context)
     {
-        if (period.Start > BillingPeriod.At(context.At).Start) return MembershipErrors.FuturePeriod;
-        if (period.Start < BillingPeriod.At(SubscribedAt).Start) return MembershipErrors.PeriodBeforeSubscription;
+        if (payment.Amount != MonthlyAllowance) return MembershipErrors.AllowanceAmountMismatch;
+        if (payment.Period.Start > BillingPeriod.At(context.At).Start) return MembershipErrors.FuturePeriod;
+        if (payment.Period.Start < BillingPeriod.At(SubscribedAt).Start) return MembershipErrors.PeriodBeforeSubscription;
 
-        return PostTransfer(
-            LedgerAccount.AllowanceFunding,
-            Account,
-            MonthlyAllowance,
-            new TransactionHeader(IdempotencyKey.ForAllowance(Id, period), AllowanceFingerprint(Id, period), $"Monthly allowance {period}", context.At, context.Caller));
+        var header = new TransactionHeader(
+            IdempotencyKey.ForAllowance(Id, payment.Period),
+            AllowanceFingerprint(payment.Reference),
+            $"Monthly allowance {payment.Period}",
+            context.At,
+            context.Caller,
+            ExternalReference: payment.Reference);
+        return PostTransfer(LedgerAccount.AllowanceFunding, Account, MonthlyAllowance, header);
     }
 
     public Result<LedgerTransaction> Redeem(Reward reward, Money balance, IdempotencyKey key, PostingContext context)

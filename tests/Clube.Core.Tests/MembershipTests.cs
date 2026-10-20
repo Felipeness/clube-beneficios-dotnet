@@ -25,7 +25,7 @@ public class MembershipTests
     {
         var membership = NewMembership();
 
-        var posting = ResultAssert.Ok(membership.CreditMonthlyAllowance(October, Context));
+        var posting = ResultAssert.Ok(membership.CreditMonthlyAllowance(Payments.Parsed(October), Context));
 
         Assert.Equal(IdempotencyKey.ForAllowance(membership.Id, October), posting.Header.Key);
         Assert.Contains(posting.Entries, entry => entry.Account == membership.Account && entry.SignedCents == 2000);
@@ -46,10 +46,35 @@ public class MembershipTests
     {
         var membership = Membership.Subscribe(ResultAssert.Ok(Cpf.Parse("529.982.247-25")), DateTimeOffset.Parse(subscribedAt));
 
-        var result = membership.CreditMonthlyAllowance(ResultAssert.Ok(BillingPeriod.Parse(period)), At(DateTimeOffset.Parse(now)));
+        var result = membership.CreditMonthlyAllowance(Payments.Parsed(ResultAssert.Ok(BillingPeriod.Parse(period))), At(DateTimeOffset.Parse(now)));
 
         if (expectedErrorCode is null) ResultAssert.Ok(result);
         else Assert.Equal(expectedErrorCode, ResultAssert.Failed(result).Code);
+    }
+
+    [Theory]
+    [InlineData(1999)]
+    [InlineData(2001)]
+    [InlineData(0)]
+    [InlineData(-2000)]
+    public void RejectsAPaymentOtherThanTheExactAllowance(long amountCents)
+    {
+        var membership = NewMembership();
+
+        var error = ResultAssert.Failed(membership.CreditMonthlyAllowance(Payments.Parsed(October, amountCents), Context));
+
+        Assert.Equal(MembershipErrors.AllowanceAmountMismatch, error);
+        Assert.Equal(0, membership.LedgerVersion);
+    }
+
+    [Fact]
+    public void RecordsTheProviderReferenceOnTheCredit()
+    {
+        var payment = Payments.Parsed(October);
+
+        var posting = ResultAssert.Ok(NewMembership().CreditMonthlyAllowance(payment, Context));
+
+        Assert.Equal(payment.Reference, posting.Header.ExternalReference);
     }
 
     [Fact]
@@ -79,7 +104,7 @@ public class MembershipTests
     {
         var membership = NewMembership();
 
-        membership.CreditMonthlyAllowance(October, Context);
+        membership.CreditMonthlyAllowance(Payments.Parsed(October), Context);
         membership.Redeem(CinemaTicket, Money.FromCents(2000), RedemptionKey(membership), Context);
 
         Assert.Equal(2, membership.LedgerVersion);
