@@ -6,5 +6,7 @@ namespace Clube.Adapters.Jobs;
 public static class JobsAdapter
 {
     public static IServiceCollection AddJobsAdapter(this IServiceCollection services) =>
-        services.AddHostedService<CreditExpiryWorker>();
+        services
+            .AddHostedService<CreditExpiryWorker>()
+            .AddHostedService<ReconciliationWorker>();
 }

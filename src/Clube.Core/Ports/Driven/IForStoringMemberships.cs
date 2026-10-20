@@ -1,5 +1,6 @@
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Memberships;
+using Clube.Core.Domain.Reconciliation;
 using Clube.Core.Domain.Vouchers;
 
 namespace Clube.Core.Ports.Driven;
@@ -32,6 +33,12 @@ public interface IForStoringMemberships
 
     /// <summary>Summed by the store, never by loading entries: credits posted before <paramref name="creditedBefore"/> and every debit.</summary>
     Task<ExpiryTotals> ExpiryTotalsOfAsync(LedgerAccount account, DateTimeOffset creditedBefore, CancellationToken ct);
+
+    /// <summary>Summed by the store over every entry ever posted. Zero while double entry holds.</summary>
+    Task<long> LedgerImbalanceAsync(CancellationToken ct);
+
+    /// <summary>Pix credited by transactions posted inside the window, in reference order, after the cursor (null for the first page), at most <paramref name="limit"/>.</summary>
+    Task<IReadOnlyList<ReceivedPix>> ReceivedPixAsync(PostingWindow window, PaymentReference? after, int limit, CancellationToken ct);
 
     void Add(Membership membership);
 

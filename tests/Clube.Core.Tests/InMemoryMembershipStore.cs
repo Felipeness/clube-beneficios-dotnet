@@ -1,5 +1,6 @@
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Memberships;
+using Clube.Core.Domain.Reconciliation;
 using Clube.Core.Domain.Vouchers;
 using Clube.Core.Ports.Driven;
 
@@ -63,6 +64,18 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships, IForStor
         long debited = entries.Where(entry => entry.SignedCents < 0).Sum(entry => -entry.SignedCents);
         return Task.FromResult(new ExpiryTotals(Money.FromCents(credited), Money.FromCents(debited)));
     }
+
+    public Task<long> LedgerImbalanceAsync(CancellationToken ct) =>
+        Task.FromResult(postedTransactions.Sum(transaction => transaction.Entries.Sum(entry => entry.SignedCents)));
+
+    public Task<IReadOnlyList<ReceivedPix>> ReceivedPixAsync(PostingWindow window, PaymentReference? after, int limit, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<ReceivedPix>>([.. postedTransactions
+            .Where(transaction => transaction.Header.ExternalReference is not null && transaction.Header.PostedAt >= window.From && transaction.Header.PostedAt < window.Until)
+            .Select(transaction => (Reference: transaction.Header.ExternalReference.GetValueOrDefault(), transaction))
+            .Where(posted => after is not PaymentReference cursor || string.CompareOrdinal(posted.Reference.Value, cursor.Value) > 0)
+            .OrderBy(posted => posted.Reference.Value, StringComparer.Ordinal)
+            .Take(limit)
+            .Select(posted => new ReceivedPix(posted.Reference, Money.FromCents(posted.transaction.Entries.Where(entry => entry.SignedCents > 0).Sum(entry => entry.SignedCents))))]);
 
     public void Add(Membership membership) => pendingMembers.Add(membership);
 

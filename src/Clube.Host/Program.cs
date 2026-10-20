@@ -15,6 +15,8 @@ builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IForManagingMemberships, MembershipManager>();
 builder.Services.AddScoped<IForRelayingTheOutbox, OutboxDispatcher>();
 builder.Services.AddScoped<IForExpiringCredits, CreditExpiryRunner>();
+builder.Services.AddScoped<IForReconcilingWithThePsp, ReconciliationRunner>();
+builder.Services.AddScoped<IForCheckingLedgerIntegrity, LedgerIntegrityChecker>();
 builder.Services.AddSqliteAdapter(connectionString);
 builder.Services.AddHttpAdapter();
 builder.Services.AddPartnersAdapter();

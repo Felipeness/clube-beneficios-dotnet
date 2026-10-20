@@ -202,7 +202,7 @@ public class CreditExpiryTests
     }
 
     // A valid CPF per index: nine base digits plus the two check digits.
-    private static string CpfNumber(int index)
+    internal static string CpfNumber(int index)
     {
         int[] digits = [.. $"{100000000 + index}".Select(digit => digit - '0')];
         int[] withFirst = [.. digits, CheckDigit(digits)];

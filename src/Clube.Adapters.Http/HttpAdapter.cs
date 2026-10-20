@@ -27,6 +27,7 @@ public static class HttpAdapter
         services.AddBearerAuthentication();
         services.AddSingleton<PixSignature>();
         services.AddScoped<PixWebhookReceiver>();
+        services.AddLedgerHealth();
         return services.ConfigureHttpJsonOptions(options =>
         {
             // Turns a missing or null "cpf" into a 400 at the boundary instead of a NullReferenceException.
@@ -77,6 +78,8 @@ public static class HttpAdapter
         }
         app.MapMemberships();
         app.MapPixWebhooks();
+        app.MapReconciliation();
+        app.MapHealth();
         return app;
     }
 }

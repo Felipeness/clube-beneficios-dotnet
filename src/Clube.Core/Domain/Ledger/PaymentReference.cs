@@ -17,5 +17,8 @@ public readonly record struct PaymentReference
             ? new PaymentReference(raw)
             : LedgerErrors.InvalidPaymentReference;
 
+    // Rebuilds a reference from what a store persisted; new ones only enter through Parse.
+    public static PaymentReference FromStored(string value) => new(value);
+
     public override string ToString() => Value;
 }

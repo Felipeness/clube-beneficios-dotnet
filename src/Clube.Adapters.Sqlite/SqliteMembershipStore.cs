@@ -1,5 +1,6 @@
 using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Memberships;
+using Clube.Core.Domain.Reconciliation;
 using Clube.Core.Domain.Vouchers;
 using Clube.Core.Ports.Driven;
 using Microsoft.Data.Sqlite;
@@ -84,6 +85,26 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
             .Where(entry => entry.Account == account.Value && entry.SignedCents < 0)
             .SumAsync(entry => -entry.SignedCents, ct);
         return new ExpiryTotals(Money.FromCents(credited), Money.FromCents(debited));
+    }
+
+    public Task<long> LedgerImbalanceAsync(CancellationToken ct) =>
+        db.LedgerEntries.SumAsync(entry => entry.SignedCents, ct);
+
+    public async Task<IReadOnlyList<ReceivedPix>> ReceivedPixAsync(PostingWindow window, PaymentReference? after, int limit, CancellationToken ct)
+    {
+        long from = window.From.ToUnixTimeMilliseconds();
+        long until = window.Until.ToUnixTimeMilliseconds();
+        string cursor = after?.Value ?? string.Empty;
+        var rows = await db.LedgerTransactions
+            .Where(transaction => transaction.ExternalReference != null && transaction.PostedAtUnixMs >= from && transaction.PostedAtUnixMs < until)
+            .Where(transaction => string.Compare(transaction.ExternalReference, cursor) > 0)
+            .OrderBy(transaction => transaction.ExternalReference)
+            .Take(limit)
+            .Select(transaction => new { transaction.ExternalReference, Cents = transaction.Entries.Where(entry => entry.SignedCents > 0).Sum(entry => entry.SignedCents) })
+            .ToListAsync(ct);
+
+        // The WHERE already excludes NULL references; the pattern only lets the compiler see it.
+        return [.. rows.Select(row => row.ExternalReference is { } reference ? new ReceivedPix(PaymentReference.FromStored(reference), Money.FromCents(row.Cents)) : null).OfType<ReceivedPix>()];
     }
 
     public void Add(Membership membership) => db.Memberships.Add(membership);

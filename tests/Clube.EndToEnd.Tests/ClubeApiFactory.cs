@@ -71,8 +71,12 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
             services.Remove(services.Single(service => service.ImplementationType == typeof(OutboxWorker)));
             // Same for credit expiry: a daily run at startup would expire under the tests' feet; RunCreditExpiryAsync triggers it.
             services.Remove(services.Single(service => service.ImplementationType == typeof(CreditExpiryWorker)));
+            // Reconciliation reads the PSP's statement: tests feed it through Psp and ask for a day with the route.
+            services.Remove(services.Single(service => service.ImplementationType == typeof(ReconciliationWorker)));
         });
     }
+
+    public ConfigurablePspSettlements Psp => Services.GetRequiredService<ConfigurablePspSettlements>();
 
     public async Task<IReadOnlyList<OutboxMessage>> DispatchOutboxAsync()
     {
