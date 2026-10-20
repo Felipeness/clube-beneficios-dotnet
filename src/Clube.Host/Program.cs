@@ -24,7 +24,7 @@ builder.Services.AddJobsAdapter();
 
 var app = builder.Build();
 
-await app.Services.EnsureSqliteSchemaAsync();
+await app.Services.PrepareSqliteSchemaAsync(migrateOnBoot: app.Environment.IsDevelopment());
 app.UseHttpAdapter();
 
 app.Run();

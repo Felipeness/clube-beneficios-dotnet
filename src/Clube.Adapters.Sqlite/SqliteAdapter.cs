@@ -8,15 +8,6 @@ namespace Clube.Adapters.Sqlite;
 
 public static class SqliteAdapter
 {
-    // The database itself refuses to rewrite history, so append-only does not depend on every developer remembering it.
-    private static readonly string[] AppendOnlyTriggers =
-    [
-        "CREATE TRIGGER IF NOT EXISTS ledger_entries_no_update BEFORE UPDATE ON ledger_entries BEGIN SELECT RAISE(ABORT, 'ledger is append-only'); END;",
-        "CREATE TRIGGER IF NOT EXISTS ledger_entries_no_delete BEFORE DELETE ON ledger_entries BEGIN SELECT RAISE(ABORT, 'ledger is append-only'); END;",
-        "CREATE TRIGGER IF NOT EXISTS ledger_transactions_no_update BEFORE UPDATE ON ledger_transactions BEGIN SELECT RAISE(ABORT, 'ledger is append-only'); END;",
-        "CREATE TRIGGER IF NOT EXISTS ledger_transactions_no_delete BEFORE DELETE ON ledger_transactions BEGIN SELECT RAISE(ABORT, 'ledger is append-only'); END;",
-    ];
-
     public static IServiceCollection AddSqliteAdapter(this IServiceCollection services, string connectionString)
     {
         // Fails the boot instead of storing CPFs under a missing, short or shared key. Development reads its dev-only keys from
@@ -34,12 +25,19 @@ public static class SqliteAdapter
             .AddScoped<IForStoringOutbox, SqliteOutboxStore>();
     }
 
-    // ponytail: EnsureCreated keeps no schema history; switch to EF migrations before the first schema change ships
-    public static async Task EnsureSqliteSchemaAsync(this IServiceProvider services)
+    // Development and tests migrate on boot. Elsewhere the deploy applies the migrations as its own step (idempotent script or
+    // bundle) and the host refuses to start against a database that is behind, instead of racing other instances to alter it.
+    public static async Task PrepareSqliteSchemaAsync(this IServiceProvider services, bool migrateOnBoot)
     {
         await using var scope = services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<ClubeDbContext>();
-        await db.Database.EnsureCreatedAsync();
-        foreach (string trigger in AppendOnlyTriggers) await db.Database.ExecuteSqlRawAsync(trigger);
+        if (migrateOnBoot)
+        {
+            await db.Database.MigrateAsync();
+            return;
+        }
+        var pending = (await db.Database.GetPendingMigrationsAsync()).ToList();
+        if (pending.Count > 0)
+            throw new InvalidOperationException($"Database is behind the code, apply the pending migrations before starting: {string.Join(", ", pending)}.");
     }
 }

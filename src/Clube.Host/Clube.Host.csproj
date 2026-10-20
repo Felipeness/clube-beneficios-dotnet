@@ -12,6 +12,7 @@
     <ProjectReference Include="..\Clube.Adapters.Jobs\Clube.Adapters.Jobs.csproj" />
     <ProjectReference Include="..\Clube.Adapters.Partners\Clube.Adapters.Partners.csproj" />
     <ProjectReference Include="..\Clube.Adapters.Sqlite\Clube.Adapters.Sqlite.csproj" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13" PrivateAssets="all" />
   </ItemGroup>
 
 </Project>

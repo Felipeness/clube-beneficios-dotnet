@@ -1,0 +1,3 @@
+[*.cs]
+# EF tooling output: regenerated, not hand-formatted.
+generated_code = true

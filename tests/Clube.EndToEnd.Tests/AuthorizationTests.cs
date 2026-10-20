@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -103,6 +103,7 @@ public class AuthorizationTests
     public async Task RefusesToBootOutsideDevelopmentWithoutATrustedIssuer()
     {
         await using var factory = new ClubeApiFactory();
+        factory.MigrateDatabase();
         using var production = factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production").UseSetting("Authentication:Schemes:Bearer:ValidIssuer", ""));
 
         var refused = Assert.ThrowsAny<Exception>(() => production.CreateClient());

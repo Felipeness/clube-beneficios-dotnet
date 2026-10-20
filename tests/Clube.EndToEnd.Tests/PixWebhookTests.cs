@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Clube.Core.Ports.Driving;
@@ -238,6 +238,7 @@ public class PixWebhookTests
     public async Task RefusesToBootOutsideDevelopmentWithoutAWebhookSecret()
     {
         await using var factory = new ClubeApiFactory();
+        factory.MigrateDatabase();
         using var production = factory.WithWebHostBuilder(builder => builder.UseEnvironment("Production").UseSetting("Psp:WebhookSecret", ""));
 
         var refused = Assert.ThrowsAny<Exception>(() => production.CreateClient());

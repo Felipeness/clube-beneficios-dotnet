@@ -1,4 +1,4 @@
-using System.Net.Http.Headers;
+﻿using System.Net.Http.Headers;
 using System.Text;
 using Clube.Adapters.Jobs;
 using Clube.Adapters.Partners;
@@ -81,6 +81,9 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
             services.Remove(services.Single(service => service.ImplementationType == typeof(ReconciliationWorker)));
         });
     }
+
+    // A non-Development host never migrates, so a test that boots one needs the schema applied first by a Development boot.
+    public void MigrateDatabase() => _ = Services;
 
     public ConfigurablePspSettlements Psp => Services.GetRequiredService<ConfigurablePspSettlements>();
 
