@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Scalar.AspNetCore;
 
 namespace Clube.Adapters.Http;
 
@@ -30,7 +31,11 @@ public static class HttpAdapter
                 : StatusCodes.Status500InternalServerError,
         });
         app.UseStatusCodePages();
-        if (app.Environment.IsDevelopment()) app.MapOpenApi();
+        if (app.Environment.IsDevelopment())
+        {
+            app.MapOpenApi();
+            app.MapScalarApiReference();
+        }
         app.MapMemberships();
         return app;
     }
