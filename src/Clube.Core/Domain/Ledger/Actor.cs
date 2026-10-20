@@ -28,6 +28,9 @@ public sealed record Actor
         Id = id;
     }
 
+    // Only staff and the payment provider (refunds, MED) may undo a posting; a member reversing a redemption would mint credit.
+    public bool MayReverseTransactions => Kind is ActorKind.Operator or ActorKind.PaymentProvider;
+
     public static Actor Member(MembershipId id) => new(ActorKind.Member, id.ToString());
 
     // The subject is the identity provider's stable user id, so an audit leads back to one person.

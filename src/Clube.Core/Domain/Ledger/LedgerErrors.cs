@@ -22,6 +22,9 @@ public static class LedgerErrors
     public static readonly Error ReversalOfReversal =
         new("ledger.reversal_of_reversal", "A reversal cannot be reversed.", ErrorKind.BusinessRule);
 
+    public static readonly Error ReversalForbidden =
+        new("ledger.reversal_forbidden", "Only an operator or the payment provider may reverse a transaction.", ErrorKind.Forbidden);
+
     public static readonly Error Unbalanced =
         new("ledger.unbalanced", "Debits and credits must sum to zero.", ErrorKind.BusinessRule);
 }

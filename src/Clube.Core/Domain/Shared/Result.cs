@@ -9,6 +9,7 @@ public enum ErrorKind
     NotFound,
     Conflict,
     BusinessRule,
+    Forbidden,
 }
 
 public sealed record Error(string Code, string Message, ErrorKind Kind);

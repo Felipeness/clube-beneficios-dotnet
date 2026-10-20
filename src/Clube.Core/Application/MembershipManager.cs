@@ -59,6 +59,7 @@ public sealed class MembershipManager(IForStoringMemberships memberships, IForId
 
     public async Task<Result<PaymentRefundOutcome>> RefundPaymentAsync(string originalReference, CancellationToken ct)
     {
+        if (!caller.Current.Actor.MayReverseTransactions) return LedgerErrors.ReversalForbidden;
         if (!PaymentReference.Parse(originalReference).TryGetValue(out var reference, out var invalidReference)) return invalidReference;
 
         var credit = await memberships.FindTransactionByReferenceAsync(reference, ct);
@@ -97,6 +98,8 @@ public sealed class MembershipManager(IForStoringMemberships memberships, IForId
 
     public async Task<Result<MembershipView>> ReverseTransactionAsync(MembershipId id, Guid transactionId, CancellationToken ct)
     {
+        // Defence in depth: the HTTP policy already demands an operator, but a driving adapter that forgets it must not open the door.
+        if (!caller.Current.Actor.MayReverseTransactions) return LedgerErrors.ReversalForbidden;
         var membership = await memberships.FindAsync(id, ct);
         if (membership is null) return MembershipErrors.NotFound;
         // Another member's transaction looks the same as a missing one: nothing to learn from the difference.

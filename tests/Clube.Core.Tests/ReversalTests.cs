@@ -125,6 +125,30 @@ public class ReversalTests
         Assert.Equal(2000, ResultAssert.Ok(await memberships.GetAsync(owner, default)).BalanceCents);
     }
 
+    public static TheoryData<string> CallersThatMayNotReverse => ["anonymous", "member"];
+
+    // The HTTP policy already stops these; the hexagon refuses on its own so a driving adapter that forgets it stays safe.
+    [Theory]
+    [MemberData(nameof(CallersThatMayNotReverse))]
+    public async Task RefusesReversalsAndRefundsFromCallersThatAreNeitherOperatorNorProvider(string callerKind)
+    {
+        var store = new InMemoryMembershipStore();
+        var staff = NewHexagon(store);
+        var id = await SubscribeAsync(staff);
+        var payment = Payments.Allowance("2026-10");
+        await staff.CreditMonthlyAllowanceAsync(id, payment, default);
+        Guid credit = await TransactionIdAsync(staff, id, "Monthly allowance 2026-10");
+        var outsider = NewHexagon(store, callerKind == "member" ? Actor.Member(id) : Actor.Anonymous);
+
+        Error reversal = ResultAssert.Failed(await outsider.ReverseTransactionAsync(id, credit, default));
+        Error refund = ResultAssert.Failed(await outsider.RefundPaymentAsync(payment.Reference, default));
+
+        Assert.Equal(LedgerErrors.ReversalForbidden, reversal);
+        Assert.Equal(LedgerErrors.ReversalForbidden, refund);
+        Assert.Equal(ErrorKind.Forbidden, reversal.Kind);
+        Assert.Single(store.PostedTransactions);
+    }
+
     [Fact]
     public async Task StampsTheOperatorOnTheReversal()
     {

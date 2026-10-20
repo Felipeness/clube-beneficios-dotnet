@@ -18,6 +18,7 @@ internal static class ErrorResults
         ErrorKind.NotFound => StatusCodes.Status404NotFound,
         ErrorKind.Conflict => StatusCodes.Status409Conflict,
         ErrorKind.BusinessRule => StatusCodes.Status422UnprocessableEntity,
+        ErrorKind.Forbidden => StatusCodes.Status403Forbidden,
         _ => throw new UnreachableException($"Unmapped error kind {kind}."),
     };
 }
