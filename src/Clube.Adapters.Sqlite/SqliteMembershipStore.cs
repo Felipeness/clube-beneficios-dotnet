@@ -33,8 +33,11 @@ internal sealed class SqliteMembershipStore(ClubeDbContext db) : IForStoringMemb
         return [.. rows.Select(row => new StatementLine(row.TransactionId, row.Description, row.SignedCents, row.PostedAt))];
     }
 
-    public Task<bool> HasPostedAsync(IdempotencyKey key, CancellationToken ct) =>
-        db.LedgerTransactions.AnyAsync(transaction => transaction.IdempotencyKey == key.Value, ct);
+    public Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct) =>
+        db.LedgerTransactions
+            .Where(transaction => transaction.IdempotencyKey == key.Value)
+            .Select(transaction => (string?)transaction.Fingerprint)
+            .SingleOrDefaultAsync(ct);
 
     public void Add(Membership membership) => db.Memberships.Add(membership);
 
@@ -42,6 +45,7 @@ internal sealed class SqliteMembershipStore(ClubeDbContext db) : IForStoringMemb
     {
         Id = transaction.Id,
         IdempotencyKey = transaction.Header.Key.Value,
+        Fingerprint = transaction.Header.Fingerprint,
         Description = transaction.Header.Description,
         PostedAt = transaction.Header.PostedAt,
         Entries = [.. transaction.Entries.Select(entry => new LedgerEntryRow

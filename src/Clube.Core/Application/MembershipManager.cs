@@ -49,7 +49,7 @@ public sealed class MembershipManager(IForStoringMemberships memberships, TimePr
         var membership = await memberships.FindAsync(id, ct);
         if (membership is null) return MembershipErrors.NotFound;
         // Fast path for retries; the unique index on the key is what actually guarantees it.
-        if (await memberships.HasPostedAsync(IdempotencyKey.ForAllowance(id, billingPeriod), ct)) return await ViewOfAsync(membership, ct);
+        if (await memberships.FindPostedFingerprintAsync(IdempotencyKey.ForAllowance(id, billingPeriod), ct) is not null) return await ViewOfAsync(membership, ct);
         if (!membership.CreditMonthlyAllowance(billingPeriod, clock.GetUtcNow()).TryGetValue(out var posting, out var rejected)) return rejected;
 
         return await PostAsync(membership, posting, ct);
@@ -62,8 +62,10 @@ public sealed class MembershipManager(IForStoringMemberships memberships, TimePr
 
         var membership = await memberships.FindAsync(id, ct);
         if (membership is null) return MembershipErrors.NotFound;
-        // A retried request answers with the current state and charges nothing.
-        if (await memberships.HasPostedAsync(key, ct)) return await ViewOfAsync(membership, ct);
+        // A retried request answers with the current state and charges nothing; the same key for another reward is refused.
+        string? postedFingerprint = await memberships.FindPostedFingerprintAsync(key, ct);
+        if (postedFingerprint is not null)
+            return postedFingerprint == Membership.RedemptionFingerprint(reward) ? await ViewOfAsync(membership, ct) : LedgerErrors.IdempotencyKeyReused;
 
         var balance = await memberships.BalanceOfAsync(membership.Account, ct);
         if (!membership.Redeem(reward, balance, key, clock.GetUtcNow()).TryGetValue(out var posting, out var rejected)) return rejected;

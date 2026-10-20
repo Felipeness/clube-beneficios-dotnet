@@ -7,6 +7,9 @@ public static class LedgerErrors
     public static readonly Error InvalidIdempotencyKey =
         new("ledger.invalid_idempotency_key", "Idempotency-Key must have 1 to 64 characters.", ErrorKind.Validation);
 
+    public static readonly Error IdempotencyKeyReused =
+        new("ledger.idempotency_key_reused", "This Idempotency-Key was already used for a different request.", ErrorKind.BusinessRule);
+
     public static readonly Error TooFewEntries =
         new("ledger.too_few_entries", "A transaction needs at least two entries.", ErrorKind.BusinessRule);
 

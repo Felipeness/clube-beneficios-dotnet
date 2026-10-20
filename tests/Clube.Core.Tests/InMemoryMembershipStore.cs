@@ -21,8 +21,8 @@ internal sealed class InMemoryMembershipStore : IForStoringMemberships
     public Task<IReadOnlyList<StatementLine>> StatementOfAsync(LedgerAccount account, int limit, CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<StatementLine>>([.. EntriesOf(account).Reverse().Take(limit)]);
 
-    public Task<bool> HasPostedAsync(IdempotencyKey key, CancellationToken ct) =>
-        Task.FromResult(postedTransactions.Any(transaction => transaction.Header.Key == key));
+    public Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct) =>
+        Task.FromResult(postedTransactions.FirstOrDefault(transaction => transaction.Header.Key == key)?.Header.Fingerprint);
 
     public void Add(Membership membership) => pendingMembers.Add(membership);
 

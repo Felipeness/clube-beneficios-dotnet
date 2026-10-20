@@ -9,6 +9,7 @@ internal sealed class LedgerTransactionRow
 {
     public Guid Id { get; init; }
     public required string IdempotencyKey { get; init; }
+    public required string Fingerprint { get; init; }
     public required string Description { get; init; }
     public DateTimeOffset PostedAt { get; init; }
     public List<LedgerEntryRow> Entries { get; init; } = [];
@@ -29,6 +30,7 @@ internal sealed class LedgerTransactionConfiguration : IEntityTypeConfiguration<
         builder.ToTable("ledger_transactions");
         builder.HasKey(transaction => transaction.Id);
         builder.Property(transaction => transaction.IdempotencyKey).HasMaxLength(160);
+        builder.Property(transaction => transaction.Fingerprint).HasMaxLength(160);
         builder.HasIndex(transaction => transaction.IdempotencyKey).IsUnique();
         builder.HasMany(transaction => transaction.Entries).WithOne().HasForeignKey(entry => entry.TransactionId);
     }

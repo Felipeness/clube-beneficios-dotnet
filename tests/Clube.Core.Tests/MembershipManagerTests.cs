@@ -1,4 +1,6 @@
 using Clube.Core.Application;
+using Clube.Core.Domain.Ledger;
+using Clube.Core.Domain.Shared;
 using Clube.Core.Domain.Memberships;
 using Clube.Core.Ports.Driving;
 
@@ -39,6 +41,21 @@ public class MembershipManagerTests
         var retried = ResultAssert.Ok(await memberships.RedeemRewardAsync(id, "cinema-ticket", "order-42", default));
 
         Assert.Equal(1000, retried.BalanceCents);
+    }
+
+    [Fact]
+    public async Task RejectsReusedKeyForADifferentReward()
+    {
+        var memberships = NewHexagon();
+        var id = await SubscribeAsync(memberships);
+        await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        await memberships.RedeemRewardAsync(id, "cinema-ticket", "order-42", default);
+
+        Error reused = ResultAssert.Failed(await memberships.RedeemRewardAsync(id, "thermal-bottle", "order-42", default));
+        long balance = ResultAssert.Ok(await memberships.GetAsync(id, default)).BalanceCents;
+
+        Assert.Equal(LedgerErrors.IdempotencyKeyReused, reused);
+        Assert.Equal(1000, balance);
     }
 
     [Fact]

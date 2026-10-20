@@ -32,6 +32,23 @@ public class MembershipApiTests
     }
 
     [Fact]
+    public async Task RejectsReusedIdempotencyKeyForADifferentReward()
+    {
+        await using var factory = new ClubeApiFactory();
+        var client = factory.CreateClient();
+        var created = await SubscribeAsync(client);
+        string membership = $"/memberships/{created.Id}";
+        await PostAsync<MembershipView>(client, $"{membership}/allowance-credits", new { period = "2026-10" });
+        await PostAsync<MembershipView>(client, $"{membership}/redemptions", new { rewardId = "cinema-ticket" }, idempotencyKey: "order-1");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{membership}/redemptions") { Content = JsonContent.Create(new { rewardId = "thermal-bottle" }) };
+        request.Headers.Add("Idempotency-Key", "order-1");
+        var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+    }
+
+    [Fact]
     public async Task RejectsSecondMembershipForSameHolder()
     {
         await using var factory = new ClubeApiFactory();

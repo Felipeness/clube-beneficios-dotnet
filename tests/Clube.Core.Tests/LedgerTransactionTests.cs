@@ -9,7 +9,7 @@ public class LedgerTransactionTests
     private static readonly Money TenReais = Money.FromCents(1000);
 
     private static TransactionHeader Header() =>
-        new(IdempotencyKey.ForAllowance(MembershipId.New(), ResultAssert.Ok(BillingPeriod.Parse("2026-10"))), "test", DateTimeOffset.UnixEpoch);
+        new(IdempotencyKey.ForAllowance(MembershipId.New(), ResultAssert.Ok(BillingPeriod.Parse("2026-10"))), "fp", "test", DateTimeOffset.UnixEpoch);
 
     [Fact]
     public void TransferDebitsOneAccountAndCreditsTheOther()

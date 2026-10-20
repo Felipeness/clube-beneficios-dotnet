@@ -35,18 +35,24 @@ public sealed class Membership
 
     public static Membership Subscribe(Cpf holder, DateTimeOffset now) => new(MembershipId.New(), holder, now);
 
+    // What a request means, stored beside its key: the same key with another meaning is a client bug, not a retry.
+    public static string RedemptionFingerprint(Reward reward) => $"redeem:{reward.Id}";
+
+    // The allowance key already spells out member and period, so the fingerprint is the key itself.
+    public static string AllowanceFingerprint(MembershipId id, BillingPeriod period) => IdempotencyKey.ForAllowance(id, period).Value;
+
     public Result<LedgerTransaction> CreditMonthlyAllowance(BillingPeriod period, DateTimeOffset now) =>
         PostTransfer(
             LedgerAccount.AllowanceFunding,
             Account,
             MonthlyAllowance,
-            new TransactionHeader(IdempotencyKey.ForAllowance(Id, period), $"Monthly allowance {period}", now));
+            new TransactionHeader(IdempotencyKey.ForAllowance(Id, period), AllowanceFingerprint(Id, period), $"Monthly allowance {period}", now));
 
     public Result<LedgerTransaction> Redeem(Reward reward, Money balance, IdempotencyKey key, DateTimeOffset now)
     {
         if (balance < reward.Price) return MembershipErrors.InsufficientBalance;
 
-        return PostTransfer(Account, LedgerAccount.Redemptions, reward.Price, new TransactionHeader(key, $"Redemption {reward.Id}", now));
+        return PostTransfer(Account, LedgerAccount.Redemptions, reward.Price, new TransactionHeader(key, RedemptionFingerprint(reward), $"Redemption {reward.Id}", now));
     }
 
     private Result<LedgerTransaction> PostTransfer(LedgerAccount from, LedgerAccount to, Money amount, TransactionHeader header)

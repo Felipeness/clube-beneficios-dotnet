@@ -16,7 +16,8 @@ public interface IForStoringMemberships
 
     Task<IReadOnlyList<StatementLine>> StatementOfAsync(LedgerAccount account, int limit, CancellationToken ct);
 
-    Task<bool> HasPostedAsync(IdempotencyKey key, CancellationToken ct);
+    /// <summary>The fingerprint stored with the transaction posted under this key, or null when the key is unused.</summary>
+    Task<string?> FindPostedFingerprintAsync(IdempotencyKey key, CancellationToken ct);
 
     void Add(Membership membership);
 

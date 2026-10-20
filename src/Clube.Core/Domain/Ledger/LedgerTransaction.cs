@@ -13,7 +13,7 @@ public sealed record LedgerEntry(LedgerAccount Account, Money Amount, EntryDirec
     public long SignedCents => Direction == EntryDirection.Credit ? Amount.Cents : -Amount.Cents;
 }
 
-public sealed record TransactionHeader(IdempotencyKey Key, string Description, DateTimeOffset PostedAt);
+public sealed record TransactionHeader(IdempotencyKey Key, string Fingerprint, string Description, DateTimeOffset PostedAt);
 
 public sealed record StatementLine(Guid TransactionId, string Description, long AmountCents, DateTimeOffset PostedAt);
 
