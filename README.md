@@ -144,9 +144,21 @@ O domínio fica numa pasta dentro do `Core`, não num projeto separado: no hexag
 - **Sem fallback policy:** cada rota diz o que exige. O `POST /webhooks/pix` segue sem JWT (a autenticidade é a assinatura HMAC), e um header `Authorization` qualquer nele não bloqueia nem muda o ator.
 - **OpenAPI:** o documento declara o esquema `Bearer` (o Scalar mostra o campo de token) e as rotas protegidas declaram `security`, 401 e 403.
 
+### LGPD: CPF cifrado em repouso
+
+- **Cifra:** `memberships.Holder` guarda o CPF com AES-256-GCM (`AesGcm`, nonce aleatório de 12 bytes por valor, tag de 16), no formato `v1:` + base64 de `nonce|ciphertext|tag`. Um dump do banco não tem CPF, e o mesmo CPF cifrado duas vezes dá textos diferentes. Isso é persistência: mora no adaptador SQLite (`PiiProtector` + value converter em `MembershipConfiguration`); o domínio continua com o `Cpf` em claro e não mudou. Texto adulterado ou de outra chave falha na leitura com exceção (o GCM autentica), vira 500 e nunca um CPF errado em silêncio. Bancos SQLite antigos (CPF em claro, sem `HolderIndex`) precisam ser recriados; não há migração dos dados existentes.
+- **Índice cego:** como a cifra é aleatória, o índice único saiu de `Holder` e foi pra `HolderIndex`, HMAC-SHA256 dos dígitos com outra chave (shadow property, preenchida no `Add` do store). É ele que garante um membro por CPF e o 409, inclusive entre `529.982.247-25` e `52998224725`. O store em memória não muda: compara o `Cpf` em claro, que é o que o índice representa.
+- **Chaves:** `Pii:EncryptionKey` e `Pii:IndexKey`, base64 de 32 bytes cada, obrigatoriamente diferentes (vazar uma não abre a outra). O host **não sobe** sem elas, com tamanho errado ou com as duas iguais, mesmo critério do segredo do webhook. `appsettings.Development.json` tem chaves geradas só pra dev; os testes usam as próprias. Nem chave nem CPF vão pra log.
+- **Modelo do EF e as chaves:** o EF monta o modelo uma vez por tipo de contexto e guarda num cache do processo, e o converter dentro dele captura o `PiiProtector`. Sem cuidado, um segundo host no mesmo processo (cada `WebApplicationFactory` dos testes, por exemplo) herdaria as chaves do primeiro. O `ClubeDbContext` recebe o `PiiProtector` (singleton do host) pelo construtor, e um `IModelCacheKeyFactory` próprio inclui essa instância na chave do cache: cada host monta o seu modelo, e em produção (um host, um protector) o modelo continua sendo montado uma vez só.
+- **O que falta, e por quê:**
+  - **Rotação de chave:** o formato já leva a versão (`v1:`), então dá pra ler `v1` e gravar `v2` ao mesmo tempo. Falta o processo: um job que re-cifra em lotes (keyset por id) e o registro de várias chaves por versão. Rotacionar a chave do índice é mais caro: exige recalcular `HolderIndex` de todos os membros numa janela controlada.
+  - **Gestão de chave:** hoje a chave vem de configuração (variável de ambiente em produção). O certo é KMS ou Key Vault, com envelope encryption (a chave de dados cifrada pela chave mestra do KMS), auditoria de acesso e rotação gerenciada; fica pra quando houver infraestrutura de nuvem definida.
+  - **Associated data:** o ciphertext não está amarrado ao id do membro (AAD), então quem escreve no banco pode trocar o CPF cifrado entre duas linhas. Vale quando o converter souber o id da linha.
+  - **Direito de eliminação:** o ledger não guarda CPF, só o id do membro, e é append-only; não precisa ser tocado. Eliminar os dados pessoais é apagar ou anonimizar a linha de `memberships` (`Holder` e `HolderIndex` viram nulos ou um marcador), mantendo o id pro ledger continuar fechando. A opção recomendada é essa anonimização, por ser simples e auditável. Crypto-shredding (uma chave por membro, apagar a chave = apagar o dado, inclusive em backups) é o caminho se backups antigos precisarem ficar ilegíveis, ao custo de gerenciar uma chave por membro. Não implementado.
+
 ### Outras
 
-- **Unicidade de CPF na porta de saída:** quem garante é o índice único (ou o store em memória). Não há pré-checagem, que correria risco de race.
+- **Unicidade de CPF na porta de saída:** quem garante é o índice único em `HolderIndex` (ou o store em memória). Não há pré-checagem, que correria risco de race.
 - **CPF mascarado** no `ToString` e na resposta, pra não vazar PII em log.
 - **`TimeProvider` também é porta de saída:** o relógio já vem abstraído na BCL, com fake pra teste.
 

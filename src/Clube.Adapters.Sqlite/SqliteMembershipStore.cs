@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 namespace Clube.Adapters.Sqlite;
 
 // Driven adapter: fulfils the storage port with EF Core + SQLite.
-internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<SqliteMembershipStore> logger) : IForStoringMemberships
+internal sealed partial class SqliteMembershipStore(ClubeDbContext db, PiiProtector pii, ILogger<SqliteMembershipStore> logger) : IForStoringMemberships
 {
     private const int SqliteUniqueConstraintViolation = 2067;
 
@@ -107,7 +107,8 @@ internal sealed partial class SqliteMembershipStore(ClubeDbContext db, ILogger<S
         return [.. rows.Select(row => row.ExternalReference is { } reference ? new ReceivedPix(PaymentReference.FromStored(reference), Money.FromCents(row.Cents)) : null).OfType<ReceivedPix>()];
     }
 
-    public void Add(Membership membership) => db.Memberships.Add(membership);
+    public void Add(Membership membership) =>
+        db.Memberships.Add(membership).Property<string>(MembershipConfiguration.HolderIndex).CurrentValue = pii.BlindIndex(membership.Holder.Digits);
 
     public void Append(LedgerTransaction transaction)
     {

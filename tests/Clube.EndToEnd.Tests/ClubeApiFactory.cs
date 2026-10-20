@@ -47,6 +47,10 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
     // The webhook signs with this; it is a test value, not the Development one, so tests never depend on appsettings.
     public const string WebhookSecret = "test-pix-webhook-secret-0123456789abcdef";
 
+    // Test-only PII keys, distinct from Development's, so a test never reads a value another environment wrote.
+    public static readonly string PiiEncryptionKey = Convert.ToBase64String(Encoding.UTF8.GetBytes("test-pii-encryption-key-32-bytes"));
+    public static readonly string PiiIndexKey = Convert.ToBase64String(Encoding.UTF8.GetBytes("test-pii-blind-index-key-32bytes"));
+
     // Plays the identity provider: the API trusts tokens signed with this key for this issuer and audience, configured
     // through the same Authentication:Schemes:Bearer keys dotnet user-jwts writes.
     public const string TokenIssuer = "clube-tests";
@@ -60,6 +64,8 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
     {
         builder.UseSetting("ConnectionStrings:Clube", connectionString);
         builder.UseSetting("Psp:WebhookSecret", WebhookSecret);
+        builder.UseSetting("Pii:EncryptionKey", PiiEncryptionKey);
+        builder.UseSetting("Pii:IndexKey", PiiIndexKey);
         builder.UseSetting("Authentication:Schemes:Bearer:ValidIssuer", TokenIssuer);
         builder.UseSetting("Authentication:Schemes:Bearer:ValidAudiences:0", TokenAudience);
         builder.UseSetting("Authentication:Schemes:Bearer:SigningKeys:0:Issuer", TokenIssuer);
