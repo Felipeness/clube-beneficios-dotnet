@@ -41,12 +41,18 @@ public sealed class Membership
     // The allowance key already spells out member and period, so the fingerprint is the key itself.
     public static string AllowanceFingerprint(MembershipId id, BillingPeriod period) => IdempotencyKey.ForAllowance(id, period).Value;
 
-    public Result<LedgerTransaction> CreditMonthlyAllowance(BillingPeriod period, DateTimeOffset now) =>
-        PostTransfer(
+    // Only periods from the subscription month up to the current one can be credited: no advancing the allowance.
+    public Result<LedgerTransaction> CreditMonthlyAllowance(BillingPeriod period, DateTimeOffset now)
+    {
+        if (period.Start > BillingPeriod.At(now).Start) return MembershipErrors.FuturePeriod;
+        if (period.Start < BillingPeriod.At(SubscribedAt).Start) return MembershipErrors.PeriodBeforeSubscription;
+
+        return PostTransfer(
             LedgerAccount.AllowanceFunding,
             Account,
             MonthlyAllowance,
             new TransactionHeader(IdempotencyKey.ForAllowance(Id, period), AllowanceFingerprint(Id, period), $"Monthly allowance {period}", now));
+    }
 
     public Result<LedgerTransaction> Redeem(Reward reward, Money balance, IdempotencyKey key, DateTimeOffset now)
     {

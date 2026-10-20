@@ -81,6 +81,8 @@ public class MembershipApiTests
         { "{membership}/redemptions", new { rewardId = "yacht" }, HttpStatusCode.NotFound },
         { "{membership}/redemptions", new { rewardId = "cinema-ticket" }, HttpStatusCode.UnprocessableEntity },
         { "{membership}/allowance-credits", new { period = "2026-13" }, HttpStatusCode.BadRequest },
+        { "{membership}/allowance-credits", new { period = "2026-11" }, HttpStatusCode.UnprocessableEntity },
+        { "{membership}/allowance-credits", new { period = "2026-09" }, HttpStatusCode.UnprocessableEntity },
     };
 
     [Theory]
@@ -124,6 +126,10 @@ public class MembershipApiTests
 
         Assert.True(responses.TryGetProperty("400", out _), "POST /memberships must document invalid CPF");
         Assert.True(responses.TryGetProperty("409", out _), "POST /memberships must document duplicate holder");
+
+        JsonElement credit = document.RootElement
+            .GetProperty("paths").GetProperty("/memberships/{id}/allowance-credits").GetProperty("post").GetProperty("responses");
+        Assert.True(credit.TryGetProperty("422", out _), "allowance credit must document periods outside the membership window");
     }
 
     private static Task<MembershipView> SubscribeAsync(HttpClient client) =>

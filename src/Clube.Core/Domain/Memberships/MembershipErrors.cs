@@ -22,6 +22,11 @@ public static class MembershipErrors
     public static readonly Error ConcurrentUpdate =
         new("membership.concurrent_update", "Membership changed during the request, retry.", ErrorKind.Conflict);
 
+    public static readonly Error FuturePeriod =
+        new("membership.future_period", "Billing period is in the future.", ErrorKind.BusinessRule);
+
+    public static readonly Error PeriodBeforeSubscription =
+        new("membership.period_before_subscription", "Billing period is before the membership started.", ErrorKind.BusinessRule);
 
     public static readonly Error InsufficientBalance =
         new("membership.insufficient_balance", "Balance does not cover this reward.", ErrorKind.BusinessRule);

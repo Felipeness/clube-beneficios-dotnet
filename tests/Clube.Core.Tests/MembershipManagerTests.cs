@@ -3,6 +3,7 @@ using Clube.Core.Domain.Ledger;
 using Clube.Core.Domain.Shared;
 using Clube.Core.Domain.Memberships;
 using Clube.Core.Ports.Driving;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Clube.Core.Tests;
 
@@ -12,8 +13,8 @@ public class MembershipManagerTests
 {
     private const string Holder = "529.982.247-25";
 
-    private static IForManagingMemberships NewHexagon() =>
-        new MembershipManager(new InMemoryMembershipStore(), TimeProvider.System);
+    private static IForManagingMemberships NewHexagon(TimeProvider? clock = null) =>
+        new MembershipManager(new InMemoryMembershipStore(), clock ?? new FakeTimeProvider(DateTimeOffset.Parse("2026-10-20T15:00:00Z")));
 
     private static async Task<MembershipId> SubscribeAsync(IForManagingMemberships memberships) =>
         new(ResultAssert.Ok(await memberships.SubscribeAsync(Holder, default)).Id);
@@ -61,9 +62,11 @@ public class MembershipManagerTests
     [Fact]
     public async Task ExplainsTheBalanceThroughTheStatement()
     {
-        var memberships = NewHexagon();
+        var clock = new FakeTimeProvider(DateTimeOffset.Parse("2026-10-20T15:00:00Z"));
+        var memberships = NewHexagon(clock);
         var id = await SubscribeAsync(memberships);
         await memberships.CreditMonthlyAllowanceAsync(id, "2026-10", default);
+        clock.SetUtcNow(DateTimeOffset.Parse("2026-11-05T15:00:00Z"));
         await memberships.CreditMonthlyAllowanceAsync(id, "2026-11", default);
         await memberships.RedeemRewardAsync(id, "thermal-bottle", "order-1", default);
 
@@ -72,6 +75,22 @@ public class MembershipManagerTests
         Assert.Equal(4000 - 2541, statement.BalanceCents);
         Assert.Equal([-2541L, 2000L, 2000L], statement.Lines.Select(line => line.AmountCents));
         Assert.Equal(statement.BalanceCents, statement.Lines.Sum(line => line.AmountCents));
+    }
+
+    [Theory]
+    [InlineData("2026-11", "membership.future_period")]
+    [InlineData("2026-09", "membership.period_before_subscription")]
+    public async Task RejectsPeriodsOutsideTheMembershipWindow(string period, string expectedErrorCode)
+    {
+        var memberships = NewHexagon();
+        var id = await SubscribeAsync(memberships);
+
+        Error rejected = ResultAssert.Failed(await memberships.CreditMonthlyAllowanceAsync(id, period, default));
+        long balance = ResultAssert.Ok(await memberships.GetAsync(id, default)).BalanceCents;
+
+        Assert.Equal(expectedErrorCode, rejected.Code);
+        Assert.Equal(ErrorKind.BusinessRule, rejected.Kind);
+        Assert.Equal(0, balance);
     }
 
     [Fact]

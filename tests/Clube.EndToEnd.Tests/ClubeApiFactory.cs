@@ -1,6 +1,9 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 
 namespace Clube.EndToEnd.Tests;
 
@@ -25,8 +28,14 @@ public sealed class ClubeApiFactory : WebApplicationFactory<Program>
         return command.ExecuteNonQuery();
     }
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    // The ledger rules depend on "now", so tests own the clock instead of reading the machine's.
+    public FakeTimeProvider Clock { get; } = new(DateTimeOffset.Parse("2026-10-20T15:00:00Z"));
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
         builder.UseSetting("ConnectionStrings:Clube", connectionString);
+        builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Clock));
+    }
 
     protected override void Dispose(bool disposing)
     {

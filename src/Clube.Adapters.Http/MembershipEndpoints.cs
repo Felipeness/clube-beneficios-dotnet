@@ -14,7 +14,7 @@ public sealed record SubscribeRequest(
     string Cpf);
 
 public sealed record CreditAllowanceRequest(
-    [property: Description("Billing period as yyyy-MM. Credits R$ 20,00 once per period; re-sending it is a no-op.")]
+    [property: Description("Billing period as yyyy-MM. Credits R$ 20,00 once per period; re-sending it is a no-op. Must fall between the subscription month and the current month (America/Sao_Paulo), otherwise 422.")]
     string Period);
 
 public sealed record RedeemRequest(
@@ -41,7 +41,8 @@ internal static class MembershipEndpoints
         memberships.MapPost("/{id:guid}/allowance-credits", CreditAllowance)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         memberships.MapPost("/{id:guid}/redemptions", Redeem)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
