@@ -112,9 +112,11 @@ public class ReconciliationTests
 
         var report = await ReconcileAsync(staff, "2026-10-20");
 
-        Assert.Equal(
-            [(credited, DivergenceKind.MissingAtPsp), ("EPAID", DivergenceKind.MissingInLedger)],
-            report.Divergences.OrderBy(divergence => divergence.EndToEndId, StringComparer.Ordinal).Select(divergence => (divergence.EndToEndId, divergence.Kind)));
+        // The webhook's endToEndId is random, so compare as a set: a fixed order flaked whenever it sorted after "EPAID".
+        Assert.Equivalent(
+            new[] { (credited, DivergenceKind.MissingAtPsp), ("EPAID", DivergenceKind.MissingInLedger) },
+            report.Divergences.Select(divergence => (divergence.EndToEndId, divergence.Kind)),
+            strict: true);
     }
 
     [Fact]
