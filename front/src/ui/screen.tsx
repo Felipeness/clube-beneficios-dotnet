@@ -1,32 +1,27 @@
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, View, type ViewStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ScrollView, type ScrollViewProps, StyleSheet, View, type ViewStyle } from 'react-native';
 import { Text } from './text';
 import { useColors } from './theme';
 import { maxContentWidth, space } from './tokens';
 
 type ScreenProps = {
   readonly children: ReactNode;
-  readonly scrolls?: boolean;
+  readonly refreshControl?: ScrollViewProps['refreshControl'];
 };
 
-// Every screen shares the same paper background, safe areas and a centered reading column on wide (desktop web) windows.
-export function Screen({ children, scrolls = true }: ScreenProps) {
+// Every screen shares the paper background and a centered reading column on wide (desktop web) windows. Safe areas
+// belong to the layouts (app bar on top, tab bar at the bottom), so screens never double them.
+export function Screen({ children, refreshControl }: ScreenProps) {
   const colors = useColors();
-  const background = { backgroundColor: colors.background };
-  if (!scrolls) {
-    return (
-      <SafeAreaView edges={['top']} style={[styles.fill, background]}>
-        <View style={[styles.fill, columnStyle]}>{children}</View>
-      </SafeAreaView>
-    );
-  }
   return (
-    <SafeAreaView edges={['top']} style={[styles.fill, background]}>
-      <ScrollView contentContainerStyle={[columnStyle, styles.scrollContent]} keyboardShouldPersistTaps="handled">
-        {children}
-      </ScrollView>
-    </SafeAreaView>
+    <ScrollView
+      style={[styles.fill, { backgroundColor: colors.background }]}
+      contentContainerStyle={[columnStyle, styles.scrollContent]}
+      keyboardShouldPersistTaps="handled"
+      refreshControl={refreshControl}
+    >
+      {children}
+    </ScrollView>
   );
 }
 

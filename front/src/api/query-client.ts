@@ -11,7 +11,7 @@ export const queryKeys = {
   rewards: ['rewards'] as const,
   devClock: ['dev', 'clock'] as const,
   ledgerHealth: ['health', 'ledger'] as const,
-  reconciliation: (date: string) => ['operations', 'reconciliation', date] as const,
+  reconciliation: (date: string | null) => ['operations', 'reconciliation', date] as const,
 };
 
 const MAX_RETRIES = 2;

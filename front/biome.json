@@ -18,7 +18,7 @@
     "enabled": true,
     "domains": { "react": "recommended", "test": "recommended" },
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "suspicious": { "noExplicitAny": "error" },
       "style": { "noNonNullAssertion": "error", "useImportType": "error", "useConst": "error" },
       "correctness": {
