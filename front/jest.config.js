@@ -16,7 +16,7 @@ module.exports = {
   // jest-expo's list plus MSW and its ESM-only dependencies. Under pnpm a package sits at .pnpm/<id>/node_modules/<name>,
   // and the inner node_modules segment is the one that decides.
   transformIgnorePatterns: [
-    '/node_modules/(?!(\\.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|msw|@msw|@mswjs|rettime|until-async|@open-draft|outvariant|strict-event-emitter|headers-polyfill|is-node-process|@tanstack|cookie|tough-cookie|tldts|type-fest|graphql|statuses|picocolors))',
+    '/node_modules/(?!(\\.pnpm|react-native|@react-native|@react-native-community|expo|@expo|@expo-google-fonts|react-navigation|@react-navigation|standard-navigation|msw|@msw|@mswjs|rettime|until-async|@open-draft|outvariant|strict-event-emitter|headers-polyfill|is-node-process|cookie|tough-cookie|tldts|type-fest|graphql|statuses|picocolors))',
     '/node_modules/react-native-reanimated/plugin/',
   ],
 };
