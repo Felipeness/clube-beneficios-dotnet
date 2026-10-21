@@ -13,6 +13,9 @@ import { MemberEntryForm, OperatorEntryForm } from './entry-forms';
 
 type Audience = 'member' | 'operator';
 
+// Below this the two tickets stack; above it they sit side by side.
+const SIDE_BY_SIDE_MIN_WIDTH = 640;
+
 type Choice = {
   readonly audience: Audience;
   readonly title: string;
@@ -40,7 +43,7 @@ const choices: readonly Choice[] = [
 
 export function WelcomeScreen() {
   const [audience, setAudience] = useState<Audience | null>(null);
-  const isWide = useWindowDimensions().width >= 640;
+  const isWide = useWindowDimensions().width >= SIDE_BY_SIDE_MIN_WIDTH;
 
   return (
     <Screen>

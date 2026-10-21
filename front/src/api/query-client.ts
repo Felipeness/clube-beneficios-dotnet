@@ -15,6 +15,8 @@ export const queryKeys = {
 };
 
 const MAX_RETRIES = 2;
+const HTTP_UNAUTHORIZED = 401;
+const HTTP_SERVER_ERROR = 500;
 
 // A 4xx is the server's final word (bad input, missing permission, business rule): repeating it changes nothing.
 // Only what can heal by itself is retried: timeouts, dropped connections and 5xx.
@@ -22,12 +24,14 @@ export function isTransient(error: unknown): boolean {
   if (!(error instanceof ApiError)) return false;
   const { failure } = error;
   return (
-    failure.kind === 'timeout' || failure.kind === 'network' || (failure.kind === 'problem' && failure.status >= 500)
+    failure.kind === 'timeout' ||
+    failure.kind === 'network' ||
+    (failure.kind === 'problem' && failure.status >= HTTP_SERVER_ERROR)
   );
 }
 
 export function isUnauthorized(error: unknown): boolean {
-  return error instanceof ApiError && error.failure.kind === 'problem' && error.failure.status === 401;
+  return error instanceof ApiError && error.failure.kind === 'problem' && error.failure.status === HTTP_UNAUTHORIZED;
 }
 
 export function createQueryClient(): QueryClient {
