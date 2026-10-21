@@ -60,14 +60,5 @@
     "doctor": "expo-doctor",
     "format": "biome check --write ."
   },
-  "private": true,
-  "jest": {
-    "preset": "jest-expo",
-    "setupFilesAfterEnv": [
-      "<rootDir>/jest.setup.ts"
-    ],
-    "transformIgnorePatterns": [
-      "node_modules/(?!(?:.pnpm/.+?/node_modules/)?((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|msw|@msw/.*|@mswjs/.*|until-async|@open-draft/.*|rettime|outvariant|strict-event-emitter|headers-polyfill|is-node-process|@tanstack/.*))"
-    ]
-  }
+  "private": true
 }
