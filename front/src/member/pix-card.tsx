@@ -33,7 +33,7 @@ const outcomes: Record<PixPaymentResult, (period: string) => Outcome> = {
   }),
   duplicate_payment: (period) => ({
     tone: 'warning',
-    title: `${formatPeriod(period)} já estava paga`,
+    title: `Competência de ${formatPeriod(period)} já estava paga`,
     detail: 'Um segundo Pix para a mesma competência não vira crédito. O valor fica marcado para devolução.',
   }),
 };

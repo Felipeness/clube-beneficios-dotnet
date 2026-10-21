@@ -27,25 +27,24 @@ export function AppTabs({ tabs, audience }: AppTabsProps) {
     <Tabs style={[styles.fill, { backgroundColor: colors.background }]}>
       <AppBar audience={audience} topInset={insets.top} />
       <TabSlot style={styles.fill} />
-      <TabList asChild>
-        <View
-          accessibilityRole="tablist"
-          style={
-            isWide
-              ? [styles.inlineTabs, { top: insets.top }]
-              : [
-                  styles.bottomTabs,
-                  { paddingBottom: Math.max(insets.bottom, space.sm), backgroundColor: colors.surface },
-                  { borderTopColor: colors.border },
-                ]
-          }
-        >
-          {tabs.map((tab) => (
-            <TabTrigger key={tab.name} name={tab.name} href={tab.href} asChild>
-              <TabButton label={tab.label} icon={tab.icon} isWide={isWide} />
-            </TabTrigger>
-          ))}
-        </View>
+      {/* Not asChild: with asChild TabList hands its Slot an array style, which expo-router rejects. As a plain View it takes the array. */}
+      <TabList
+        accessibilityRole="tablist"
+        style={
+          isWide
+            ? [styles.inlineTabs, { top: insets.top }]
+            : [
+                styles.bottomTabs,
+                { paddingBottom: Math.max(insets.bottom, space.sm), backgroundColor: colors.surface },
+                { borderTopColor: colors.border },
+              ]
+        }
+      >
+        {tabs.map((tab) => (
+          <TabTrigger key={tab.name} name={tab.name} href={tab.href} asChild>
+            <TabButton label={tab.label} icon={tab.icon} isWide={isWide} />
+          </TabTrigger>
+        ))}
       </TabList>
     </Tabs>
   );
